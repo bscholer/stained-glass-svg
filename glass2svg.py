@@ -121,7 +121,9 @@ def _max_dev(pts, i, j):
     length = np.hypot(*ab)
     if length < 1e-9:
         return 0.0
-    return float(np.abs(np.cross(ab, pts[i:j + 1] - a)).max() / length)
+    rel = pts[i:j + 1] - a
+    cross = ab[0] * rel[:, 1] - ab[1] * rel[:, 0]   # 2-D cross product
+    return float(np.abs(cross).max() / length)
 
 
 def _angle_between(v, w):
