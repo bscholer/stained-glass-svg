@@ -18,10 +18,10 @@
     --wine: #94393f;
     --sky: #7899b0;
     --moss: #7d8f4e;
-    --rule: rgba(26, 23, 18, .18);
+    --rule: rgba(26, 23, 18, .16);
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; }
+  html, body { margin: 0; height: 100%; }
   body {
     background:
       radial-gradient(1200px 500px at 85% -10%, rgba(217,142,50,.10), transparent 60%),
@@ -29,183 +29,128 @@
       var(--paper);
     color: var(--ink);
     font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: 14px;
-    line-height: 1.5;
-    min-height: 100vh;
+    font-size: 14px; line-height: 1.5;
+    display: flex; flex-direction: column;
+    height: 100vh; overflow: hidden;
   }
 
-  /* ---- header: a little glass sampler ---- */
   header {
-    border-bottom: 3px solid var(--lead);
-    padding: 28px clamp(20px, 5vw, 64px) 22px;
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 12px;
+    border-bottom: 2px solid var(--lead);
+    padding: 10px clamp(16px, 4vw, 48px);
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex: 0 0 auto;
   }
-  .brand { display: flex; align-items: center; gap: 18px; }
+  .brand { display: flex; align-items: center; gap: 13px; }
   .sampler {
-    display: grid;
-    grid-template-columns: repeat(4, 16px);
-    grid-template-rows: repeat(2, 16px);
-    gap: 3px;
-    background: var(--lead);
-    padding: 3px;
-    transform: rotate(-4deg);
+    display: grid; grid-template-columns: repeat(4, 11px);
+    grid-template-rows: repeat(2, 11px); gap: 2px;
+    background: var(--lead); padding: 2px; transform: rotate(-4deg);
   }
   .sampler i { display: block; }
-  .sampler i:nth-child(1) { background: var(--amber); }
-  .sampler i:nth-child(2) { background: var(--teal); }
-  .sampler i:nth-child(3) { background: var(--paper); }
-  .sampler i:nth-child(4) { background: var(--wine); }
-  .sampler i:nth-child(5) { background: var(--sky); }
-  .sampler i:nth-child(6) { background: var(--paper); }
-  .sampler i:nth-child(7) { background: var(--moss); }
-  .sampler i:nth-child(8) { background: var(--amber); }
-  h1 {
-    font-family: "Fraunces", serif;
-    font-weight: 900;
-    font-size: clamp(26px, 4vw, 40px);
-    letter-spacing: -0.02em;
-    margin: 0;
-  }
+  .sampler i:nth-child(1){background:var(--amber)} .sampler i:nth-child(2){background:var(--teal)}
+  .sampler i:nth-child(3){background:var(--paper)} .sampler i:nth-child(4){background:var(--wine)}
+  .sampler i:nth-child(5){background:var(--sky)} .sampler i:nth-child(6){background:var(--paper)}
+  .sampler i:nth-child(7){background:var(--moss)} .sampler i:nth-child(8){background:var(--amber)}
+  h1 { font-family: "Fraunces", serif; font-weight: 900; font-size: clamp(20px, 3vw, 28px); letter-spacing: -.02em; margin: 0; }
   h1 em { font-style: italic; font-weight: 400; }
-  .tagline { max-width: 34ch; font-size: 12px; opacity: .75; text-align: right; }
+  .tagline { max-width: 40ch; font-size: 11px; opacity: .7; text-align: right; }
 
-  main {
-    display: grid;
-    grid-template-columns: 320px 1fr;
-    gap: 0;
-    min-height: calc(100vh - 110px);
-  }
-  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  main { display: grid; grid-template-columns: 300px 1fr; flex: 1 1 auto; min-height: 0; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } body { overflow: auto; height: auto; } }
 
-  /* ---- controls column ---- */
   .controls {
-    border-right: 3px solid var(--lead);
-    padding: 26px clamp(16px, 2.5vw, 32px) 60px;
+    border-right: 2px solid var(--lead);
+    padding: 16px clamp(14px, 2vw, 24px) 30px;
+    overflow-y: auto;
   }
-  @media (max-width: 860px) { .controls { border-right: 0; border-bottom: 3px solid var(--lead); } }
+  @media (max-width: 860px){ .controls{ border-right:0; border-bottom:2px solid var(--lead);} }
 
   .drop {
-    border: 2px dashed var(--ink);
-    background: var(--paper-deep);
-    padding: 26px 18px;
-    text-align: center;
-    cursor: pointer;
-    transition: background .15s, border-color .15s;
-    position: relative;
+    border: 2px dashed var(--ink); background: var(--paper-deep);
+    padding: 16px 14px; text-align: center; cursor: pointer;
+    transition: background .15s, border-color .15s; position: relative;
   }
   .drop:hover, .drop.hot { background: #fff8ea; border-color: var(--amber); }
-  .drop strong { font-family: "Fraunces", serif; font-size: 17px; font-weight: 600; display: block; margin-bottom: 4px; }
-  .drop span { font-size: 12px; opacity: .65; }
+  .drop strong { font-family: "Fraunces", serif; font-size: 15px; font-weight: 600; display: block; margin-bottom: 3px; }
+  .drop span { font-size: 11px; opacity: .65; }
   .drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 
-  fieldset {
-    border: none; margin: 26px 0 0; padding: 0;
-  }
-  legend {
-    font-family: "Fraunces", serif;
-    font-weight: 600; font-size: 15px;
-    padding: 0 0 10px;
-  }
-  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 9px 0; }
-  .row label { font-size: 12.5px; }
-  .row output { font-size: 12px; min-width: 4ch; text-align: right; opacity: .8; }
+  fieldset { border: none; margin: 18px 0 0; padding: 0; }
+  legend { font-family: "Fraunces", serif; font-weight: 600; font-size: 14px; padding: 0 0 8px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 7px 0; }
+  .row label { font-size: 12px; }
+  .row output { font-size: 11px; min-width: 4ch; text-align: right; opacity: .8; }
   input[type=range] { flex: 1; accent-color: var(--wine); }
-  .seg {
-    display: flex; border: 2px solid var(--ink); margin-bottom: 18px;
-  }
-  .seg button {
-    flex: 1; padding: 8px 0; border: 0; background: transparent;
-    font: inherit; font-size: 12.5px; cursor: pointer; color: var(--ink);
-  }
+  .seg { display: flex; border: 2px solid var(--ink); margin-bottom: 14px; }
+  .seg button { flex: 1; padding: 7px 0; border: 0; background: transparent; font: inherit; font-size: 12px; cursor: pointer; color: var(--ink); }
   .seg button.on { background: var(--ink); color: var(--paper); }
-  details { margin-top: 18px; }
-  summary { cursor: pointer; font-size: 12.5px; opacity: .7; }
-  .check { display: flex; gap: 8px; align-items: center; margin: 9px 0; font-size: 12.5px; }
+  details { margin-top: 14px; }
+  summary { cursor: pointer; font-size: 12px; opacity: .7; }
+  .check { display: flex; gap: 8px; align-items: center; margin: 7px 0; font-size: 12px; }
 
   .go {
-    margin-top: 26px; width: 100%;
-    background: var(--ink); color: var(--paper);
-    border: 0; padding: 13px;
-    font-family: "Fraunces", serif; font-size: 17px; font-weight: 600;
-    cursor: pointer;
-    box-shadow: 4px 4px 0 var(--amber);
-    transition: transform .08s, box-shadow .08s;
+    margin-top: 18px; width: 100%; background: var(--ink); color: var(--paper);
+    border: 0; padding: 11px; font-family: "Fraunces", serif; font-size: 16px; font-weight: 600;
+    cursor: pointer; box-shadow: 4px 4px 0 var(--amber); transition: transform .08s, box-shadow .08s;
   }
   .go:hover { transform: translate(-1px,-1px); box-shadow: 6px 6px 0 var(--amber); }
   .go:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--amber); }
   .go:disabled { opacity: .45; cursor: wait; box-shadow: none; transform: none; }
 
-  /* ---- preview column ---- */
-  .stage {
-    padding: 26px clamp(16px, 3vw, 44px) 60px;
-    display: flex; flex-direction: column; gap: 16px;
-  }
+  .stage { display: flex; flex-direction: column; min-height: 0; }
   .stagebar {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 12px; flex-wrap: wrap;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 8px clamp(12px, 2vw, 24px); border-bottom: 2px solid var(--rule); flex: 0 0 auto;
   }
-  .stat { font-size: 12.5px; opacity: .75; }
+  .stat { font-size: 12px; opacity: .8; margin-right: auto; }
   .stat b { color: var(--wine); }
-  .dl {
-    background: transparent; color: var(--ink);
-    border: 2px solid var(--ink); padding: 8px 18px;
-    font: inherit; font-size: 13px; cursor: pointer;
-    text-decoration: none; display: inline-block;
-  }
+  .toolset { display: flex; gap: 0; border: 2px solid var(--ink); }
+  .toolset[hidden] { display: none; }
+  .toolset button { border: 0; border-left: 2px solid var(--ink); background: transparent; color: var(--ink); font: inherit; font-size: 12px; padding: 6px 12px; cursor: pointer; }
+  .toolset button:first-child { border-left: 0; }
+  .toolset button.on { background: var(--ink); color: var(--paper); }
+  .btn { background: transparent; color: var(--ink); border: 2px solid var(--ink); padding: 6px 12px; font: inherit; font-size: 12px; cursor: pointer; }
+  .btn:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
+  .btn:disabled { opacity: .35; cursor: not-allowed; }
+  .btn.on { background: var(--wine); color: var(--paper); border-color: var(--wine); }
+  .btn[hidden] { display: none; }
+  .dl { background: var(--amber); color: var(--ink); border: 2px solid var(--ink); padding: 6px 14px; font: inherit; font-size: 12px; cursor: pointer; text-decoration: none; }
   .dl:hover { background: var(--ink); color: var(--paper); }
   .dl[hidden] { display: none; }
 
-  .tools { display: flex; gap: 8px; align-items: center; }
-  .tool {
-    background: transparent; color: var(--ink);
-    border: 2px solid var(--ink); padding: 8px 14px;
-    font: inherit; font-size: 13px; cursor: pointer;
-  }
-  .tool:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
-  .tool:disabled { opacity: .35; cursor: not-allowed; }
-  .tool.armed { background: var(--wine); color: var(--paper); border-color: var(--wine); box-shadow: 3px 3px 0 var(--ink); }
-  .tool[hidden] { display: none; }
-
-  /* editing: pieces respond to the cursor only in edit mode */
-  .canvas svg.editing path { cursor: pointer; transition: fill .1s, opacity .1s; }
-  .canvas svg.editing path:hover { fill: var(--wine) !important; }
-  .canvas svg path.gone { opacity: 0; pointer-events: none; }
-  .editnote { font-size: 12px; opacity: .7; font-style: italic; font-family: "Fraunces", serif; }
-  .editnote[hidden] { display: none; }
-
   .canvas {
-    flex: 1; min-height: 380px;
+    flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden;
     background:
       repeating-linear-gradient(0deg, transparent 0 23px, var(--rule) 23px 24px),
       repeating-linear-gradient(90deg, transparent 0 23px, var(--rule) 23px 24px),
       #faf7f0;
-    border: 3px solid var(--lead);
-    display: grid; place-items: center;
-    padding: 18px;
-    position: relative;
-    overflow: auto;
+    touch-action: none;
   }
-  .canvas svg { max-width: 100%; max-height: 74vh; height: auto; background: white; box-shadow: 0 6px 24px rgba(26,23,18,.18); }
-  .hint {
-    font-family: "Fraunces", serif; font-style: italic;
-    font-size: 18px; opacity: .5; text-align: center; max-width: 30ch;
+  .canvas svg { width: 100%; height: 100%; display: block; }
+  .stagehint {
+    position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
+    font-family: "Fraunces", serif; font-style: italic; font-size: 17px; opacity: .5; text-align: center; padding: 20px;
   }
-  .err {
-    color: var(--wine); font-size: 13px; border: 2px solid var(--wine);
-    padding: 10px 14px; background: #fff; display: none;
+  .stagehint[hidden] { display: none; }
+  .toolhint {
+    position: absolute; left: 12px; bottom: 10px; font-size: 11px;
+    background: rgba(244,239,230,.9); border: 1px solid var(--rule); padding: 4px 8px; pointer-events: none;
   }
-  .err.show { display: block; }
+  .toolhint[hidden] { display: none; }
+  .err { position: absolute; left: 12px; top: 12px; right: 12px; color: var(--wine); font-size: 12px; border: 2px solid var(--wine); padding: 8px 12px; background: #fff; }
+  .err[hidden] { display: none; }
 
-  footer {
-    border-top: 3px solid var(--lead);
-    padding: 14px clamp(20px, 5vw, 64px);
-    font-size: 11.5px; opacity: .6;
-    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;
-  }
+  /* SVG editor visuals */
+  svg .piece { fill: #fff; stroke: var(--ink); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  svg .piece.hot { fill: #fdeecb; }
+  svg .piece.sel { fill: #cfe3dd; stroke: var(--teal); }
+  svg .piece.pick { fill: #d9c4c6; stroke: var(--wine); }
+  svg .handle { fill: var(--paper); stroke: var(--teal); stroke-width: 2; vector-effect: non-scaling-stroke; cursor: grab; }
+  svg .handle:hover { fill: var(--teal); }
+  svg .warn { fill: var(--wine); fill-opacity: .85; stroke: #fff; stroke-width: 1.5; vector-effect: non-scaling-stroke; pointer-events: none; }
+  svg .cutpt { fill: var(--amber); stroke: var(--ink); stroke-width: 1.5; vector-effect: non-scaling-stroke; pointer-events: none; }
+
+  footer { border-top: 2px solid var(--lead); padding: 6px clamp(16px, 4vw, 48px); font-size: 11px; opacity: .6; display: flex; justify-content: space-between; flex: 0 0 auto; }
   footer a { color: inherit; }
 </style>
 </head>
@@ -216,231 +161,67 @@
     <div class="sampler" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
     <h1>glass<em>2</em>svg</h1>
   </div>
-  <p class="tagline">turn a stained-glass drawing into clean, cuttable pieces. no vector-app cleverness, just edges.</p>
+  <p class="tagline">stained-glass drawings → clean, cuttable pieces. edit, then cut.</p>
 </header>
 
 <main>
   <section class="controls">
     <div class="drop" id="drop">
-      <strong>drop a drawing here</strong>
-      <span id="fname">PNG or JPG — black line work on light ground</span>
+      <strong>drop a drawing</strong>
+      <span id="fname">PNG or JPG — dark lines on light ground</span>
       <input type="file" id="file" accept="image/png,image/jpeg,image/webp">
     </div>
 
     <fieldset>
-      <legend>Output</legend>
+      <legend>Trace</legend>
       <div class="seg" role="tablist">
         <button type="button" id="modePieces" class="on">pieces</button>
         <button type="button" id="modeLines">line art</button>
       </div>
-
-      <div class="row">
-        <label for="threshold">ink threshold</label>
-        <input type="range" id="threshold" min="30" max="200" value="95">
-        <output for="threshold">95</output>
-      </div>
-      <div class="row">
-        <label for="straighten">straighten edges</label>
-        <input type="range" id="straighten" min="0" max="5" step="0.1" value="2.2">
-        <output for="straighten">2.2</output>
-      </div>
-      <div class="row">
-        <label for="sigma">smoothing</label>
-        <input type="range" id="sigma" min="0" max="4" step="0.1" value="1.5">
-        <output for="sigma">1.5</output>
-      </div>
-
+      <div class="row"><label for="threshold">ink threshold</label><input type="range" id="threshold" min="30" max="200" value="95"><output for="threshold">95</output></div>
+      <div class="row"><label for="straighten">straighten</label><input type="range" id="straighten" min="0" max="5" step="0.1" value="2.2"><output for="straighten">2.2</output></div>
+      <div class="row"><label for="sigma">smoothing</label><input type="range" id="sigma" min="0" max="4" step="0.1" value="1.5"><output for="sigma">1.5</output></div>
       <details>
         <summary>advanced</summary>
-        <div class="row">
-          <label for="simplify">node tolerance</label>
-          <input type="range" id="simplify" min="0" max="1" step="0.05" value="0.15">
-          <output for="simplify">0.15</output>
-        </div>
-        <div class="row">
-          <label for="min_area">min piece area</label>
-          <input type="range" id="min_area" min="0" max="600" step="10" value="100">
-          <output for="min_area">100</output>
-        </div>
-        <div class="row">
-          <label for="min_width">min piece width</label>
-          <input type="range" id="min_width" min="0" max="10" step="0.5" value="3">
-          <output for="min_width">3</output>
-        </div>
-        <div class="row">
-          <label for="grow">line grow</label>
-          <input type="range" id="grow" min="0" max="2" step="0.25" value="0.5">
-          <output for="grow">0.5</output>
-        </div>
-        <div class="check">
-          <input type="checkbox" id="auto_threshold">
-          <label for="auto_threshold">auto threshold (Otsu)</label>
-        </div>
-        <div class="check">
-          <input type="checkbox" id="invert">
-          <label for="invert">invert (light lines on dark)</label>
-        </div>
+        <div class="row"><label for="simplify">node tol</label><input type="range" id="simplify" min="0" max="1" step="0.05" value="0.15"><output for="simplify">0.15</output></div>
+        <div class="row"><label for="min_area">min area</label><input type="range" id="min_area" min="0" max="600" step="10" value="100"><output for="min_area">100</output></div>
+        <div class="row"><label for="min_width">min width</label><input type="range" id="min_width" min="0" max="10" step="0.5" value="3"><output for="min_width">3</output></div>
+        <div class="row"><label for="grow">line grow</label><input type="range" id="grow" min="0" max="2" step="0.25" value="0.5"><output for="grow">0.5</output></div>
+        <div class="check"><input type="checkbox" id="auto_threshold"><label for="auto_threshold">auto threshold (Otsu)</label></div>
+        <div class="check"><input type="checkbox" id="invert"><label for="invert">invert (light on dark)</label></div>
       </details>
     </fieldset>
 
     <button class="go" id="go" disabled>Trace it</button>
-    <p class="err" id="err"></p>
   </section>
 
   <section class="stage">
     <div class="stagebar">
       <span class="stat" id="stat">nothing traced yet</span>
-      <div class="tools">
-        <span class="editnote" id="editnote" hidden>click a piece to remove it · ⌘/Ctrl-Z to undo</span>
-        <button class="tool" id="undo" hidden disabled>undo</button>
-        <button class="tool" id="lock" hidden>Lock &amp; Edit</button>
-        <a class="dl" id="dl" hidden download="template.svg">download svg</a>
+      <div class="toolset" id="toolset" hidden>
+        <button data-tool="nodes" class="on" title="drag corner points">nodes</button>
+        <button data-tool="delete" title="click a piece to remove it">delete</button>
+        <button data-tool="cut" title="click a piece, then two points to split it">cut</button>
+        <button data-tool="combine" title="click two pieces to weld them">combine</button>
       </div>
+      <button class="btn on" id="warnToggle" hidden title="flag corners too tight to cut">⚠ corners</button>
+      <button class="btn" id="undo" hidden disabled>undo</button>
+      <button class="btn" id="fit" hidden title="reset zoom">fit</button>
+      <a class="dl" id="dl" hidden download="template.svg">download</a>
     </div>
     <div class="canvas" id="canvas">
-      <p class="hint">your template appears here — each piece a separate shape, ready for the cutter</p>
+      <div class="stagehint" id="stagehint">your template appears here — each piece a separate shape</div>
+      <div class="toolhint" id="toolhint" hidden></div>
+      <div class="err" id="err" hidden></div>
     </div>
   </section>
 </main>
 
 <footer>
-  <span>cut carefully.</span>
+  <span>wheel = zoom · drag empty space = pan</span>
   <a href="https://github.com/bscholer/stained-glass-svg">github.com/bscholer/stained-glass-svg</a>
 </footer>
 
-<script>
-const $ = id => document.getElementById(id);
-let file = null, mode = "pieces";
-let editing = false;          // "Lock & Edit" engaged
-let deleted = [];             // undo stack of removed <path> elements
-let baseName = "template";
-
-// live slider readouts
-document.querySelectorAll('input[type=range]').forEach(r => {
-  r.addEventListener('input', () => r.nextElementSibling.value = r.value);
-});
-
-const drop = $('drop');
-$('file').addEventListener('change', e => setFile(e.target.files[0]));
-['dragover','dragenter'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('hot'); }));
-['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('hot'); }));
-drop.addEventListener('drop', e => setFile(e.dataTransfer.files[0]));
-
-function setFile(f) {
-  if (!f) return;
-  file = f;
-  $('fname').textContent = `${f.name} · ${(f.size/1024).toFixed(0)} kB`;
-  $('go').disabled = false;
-}
-
-$('modePieces').onclick = () => setMode('pieces');
-$('modeLines').onclick = () => setMode('lines');
-function setMode(m) {
-  mode = m;
-  $('modePieces').classList.toggle('on', m === 'pieces');
-  $('modeLines').classList.toggle('on', m === 'lines');
-}
-
-// --- editing -------------------------------------------------------------
-// A recompute rebuilds every piece from scratch, so manual edits can't be
-// remapped onto new geometry. Rather than pretend to preserve them, we lock
-// the params once you start editing and guard re-trace behind a confirm.
-
-function onPieceClick(e) {
-  if (!editing) return;
-  const p = e.target.closest('path');
-  if (!p || p.classList.contains('gone')) return;
-  p.classList.add('gone');
-  deleted.push(p);
-  refreshEdit();
-}
-
-function undo() {
-  const p = deleted.pop();
-  if (p) p.classList.remove('gone');
-  refreshEdit();
-}
-
-function refreshEdit() {
-  const svg = $('canvas').querySelector('svg');
-  const live = svg ? svg.querySelectorAll('path:not(.gone)').length : 0;
-  const noun = mode === 'pieces' ? 'pieces' : 'shapes';
-  $('stat').innerHTML = `<b>${live}</b> ${noun}${deleted.length ? ` · ${deleted.length} removed` : ''}`;
-  $('undo').disabled = deleted.length === 0;
-  refreshDownload();
-}
-
-function setEditing(on) {
-  editing = on;
-  const svg = $('canvas').querySelector('svg');
-  if (svg) svg.classList.toggle('editing', on);
-  $('lock').classList.toggle('armed', on);
-  $('lock').innerHTML = on ? 'Editing — done' : 'Lock &amp; Edit';
-  $('undo').hidden = !on;
-  $('editnote').hidden = !on;
-  // sliders/re-trace disabled while editing to make the freeze explicit
-  document.querySelectorAll('.controls input, .controls button, .controls summary')
-    .forEach(el => { if (el.id !== 'go') el.disabled = on; });
-}
-
-function refreshDownload() {
-  const svg = $('canvas').querySelector('svg');
-  if (!svg) return;
-  const clone = svg.cloneNode(true);
-  clone.classList.remove('editing');
-  clone.querySelectorAll('path.gone').forEach(p => p.remove());
-  const dl = $('dl');
-  if (dl.href) URL.revokeObjectURL(dl.href);
-  dl.href = URL.createObjectURL(
-    new Blob([clone.outerHTML], { type: 'image/svg+xml' }));
-  dl.download = baseName + '.svg';
-  dl.hidden = false;
-}
-
-$('lock').onclick = () => setEditing(!editing);
-$('undo').onclick = undo;
-document.addEventListener('keydown', e => {
-  if (editing && (e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); undo(); }
-});
-
-// --- trace ---------------------------------------------------------------
-$('go').onclick = async () => {
-  if (!file) return;
-  if (deleted.length && !confirm('Re-tracing rebuilds every piece and discards your manual edits. Continue?'))
-    return;
-  const go = $('go'), err = $('err');
-  go.disabled = true; go.textContent = 'Tracing…';
-  err.classList.remove('show');
-  try {
-    const fd = new FormData();
-    fd.append('image', file);
-    fd.append('mode', mode);
-    for (const id of ['threshold','straighten','sigma','simplify','min_area','min_width','grow'])
-      fd.append(id, $(id).value);
-    fd.append('auto_threshold', $('auto_threshold').checked);
-    fd.append('invert', $('invert').checked);
-
-    const res = await fetch('/convert', { method: 'POST', body: fd });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.detail || `server error (${res.status})`);
-    }
-    const out = await res.json();
-    if (editing) setEditing(false);
-    deleted = [];
-    $('canvas').innerHTML = out.svg;
-    baseName = file.name.replace(/\.[^.]+$/, '') || 'template';
-    $('stat').innerHTML = `<b>${out.count}</b> ${mode === 'pieces' ? 'pieces' : 'shapes'} · ${out.width}×${out.height}px`;
-    $('canvas').querySelector('svg').addEventListener('click', onPieceClick);
-    $('lock').hidden = false;
-    refreshDownload();
-  } catch (e) {
-    err.textContent = e.message;
-    err.classList.add('show');
-  } finally {
-    go.disabled = false; go.textContent = 'Trace it';
-  }
-};
-</script>
+<script src="/static/editor.js"></script>
 </body>
 </html>

@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 import glass2svg
 
@@ -13,6 +14,7 @@ MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 STATIC = pathlib.Path(__file__).parent / "static"
 
 app = FastAPI(title="glass2svg")
+app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
 @app.get("/")
