@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>glass2svg — stained glass cut templates</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f4efe6;
+    --paper-deep: #ece5d6;
+    --ink: #1a1712;
+    --lead: #2b2620;
+    --amber: #d98e32;
+    --teal: #3e7f74;
+    --wine: #94393f;
+    --sky: #7899b0;
+    --moss: #7d8f4e;
+    --rule: rgba(26, 23, 18, .18);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background:
+      radial-gradient(1200px 500px at 85% -10%, rgba(217,142,50,.10), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(62,127,116,.10), transparent 60%),
+      var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* ---- header: a little glass sampler ---- */
+  header {
+    border-bottom: 3px solid var(--lead);
+    padding: 28px clamp(20px, 5vw, 64px) 22px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .brand { display: flex; align-items: center; gap: 18px; }
+  .sampler {
+    display: grid;
+    grid-template-columns: repeat(4, 16px);
+    grid-template-rows: repeat(2, 16px);
+    gap: 3px;
+    background: var(--lead);
+    padding: 3px;
+    transform: rotate(-4deg);
+  }
+  .sampler i { display: block; }
+  .sampler i:nth-child(1) { background: var(--amber); }
+  .sampler i:nth-child(2) { background: var(--teal); }
+  .sampler i:nth-child(3) { background: var(--paper); }
+  .sampler i:nth-child(4) { background: var(--wine); }
+  .sampler i:nth-child(5) { background: var(--sky); }
+  .sampler i:nth-child(6) { background: var(--paper); }
+  .sampler i:nth-child(7) { background: var(--moss); }
+  .sampler i:nth-child(8) { background: var(--amber); }
+  h1 {
+    font-family: "Fraunces", serif;
+    font-weight: 900;
+    font-size: clamp(26px, 4vw, 40px);
+    letter-spacing: -0.02em;
+    margin: 0;
+  }
+  h1 em { font-style: italic; font-weight: 400; }
+  .tagline { max-width: 34ch; font-size: 12px; opacity: .75; text-align: right; }
+
+  main {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 0;
+    min-height: calc(100vh - 110px);
+  }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+
+  /* ---- controls column ---- */
+  .controls {
+    border-right: 3px solid var(--lead);
+    padding: 26px clamp(16px, 2.5vw, 32px) 60px;
+  }
+  @media (max-width: 860px) { .controls { border-right: 0; border-bottom: 3px solid var(--lead); } }
+
+  .drop {
+    border: 2px dashed var(--ink);
+    background: var(--paper-deep);
+    padding: 26px 18px;
+    text-align: center;
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+    position: relative;
+  }
+  .drop:hover, .drop.hot { background: #fff8ea; border-color: var(--amber); }
+  .drop strong { font-family: "Fraunces", serif; font-size: 17px; font-weight: 600; display: block; margin-bottom: 4px; }
+  .drop span { font-size: 12px; opacity: .65; }
+  .drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+  fieldset {
+    border: none; margin: 26px 0 0; padding: 0;
+  }
+  legend {
+    font-family: "Fraunces", serif;
+    font-weight: 600; font-size: 15px;
+    padding: 0 0 10px;
+  }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 9px 0; }
+  .row label { font-size: 12.5px; }
+  .row output { font-size: 12px; min-width: 4ch; text-align: right; opacity: .8; }
+  input[type=range] { flex: 1; accent-color: var(--wine); }
+  .seg {
+    display: flex; border: 2px solid var(--ink); margin-bottom: 18px;
+  }
+  .seg button {
+    flex: 1; padding: 8px 0; border: 0; background: transparent;
+    font: inherit; font-size: 12.5px; cursor: pointer; color: var(--ink);
+  }
+  .seg button.on { background: var(--ink); color: var(--paper); }
+  details { margin-top: 18px; }
+  summary { cursor: pointer; font-size: 12.5px; opacity: .7; }
+  .check { display: flex; gap: 8px; align-items: center; margin: 9px 0; font-size: 12.5px; }
+
+  .go {
+    margin-top: 26px; width: 100%;
+    background: var(--ink); color: var(--paper);
+    border: 0; padding: 13px;
+    font-family: "Fraunces", serif; font-size: 17px; font-weight: 600;
+    cursor: pointer;
+    box-shadow: 4px 4px 0 var(--amber);
+    transition: transform .08s, box-shadow .08s;
+  }
+  .go:hover { transform: translate(-1px,-1px); box-shadow: 6px 6px 0 var(--amber); }
+  .go:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--amber); }
+  .go:disabled { opacity: .45; cursor: wait; box-shadow: none; transform: none; }
+
+  /* ---- preview column ---- */
+  .stage {
+    padding: 26px clamp(16px, 3vw, 44px) 60px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .stagebar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap;
+  }
+  .stat { font-size: 12.5px; opacity: .75; }
+  .stat b { color: var(--wine); }
+  .dl {
+    background: transparent; color: var(--ink);
+    border: 2px solid var(--ink); padding: 8px 18px;
+    font: inherit; font-size: 13px; cursor: pointer;
+    text-decoration: none; display: inline-block;
+  }
+  .dl:hover { background: var(--ink); color: var(--paper); }
+  .dl[hidden] { display: none; }
+
+  .canvas {
+    flex: 1; min-height: 380px;
+    background:
+      repeating-linear-gradient(0deg, transparent 0 23px, var(--rule) 23px 24px),
+      repeating-linear-gradient(90deg, transparent 0 23px, var(--rule) 23px 24px),
+      #faf7f0;
+    border: 3px solid var(--lead);
+    display: grid; place-items: center;
+    padding: 18px;
+    position: relative;
+    overflow: auto;
+  }
+  .canvas svg { max-width: 100%; max-height: 74vh; height: auto; background: white; box-shadow: 0 6px 24px rgba(26,23,18,.18); }
+  .hint {
+    font-family: "Fraunces", serif; font-style: italic;
+    font-size: 18px; opacity: .5; text-align: center; max-width: 30ch;
+  }
+  .err {
+    color: var(--wine); font-size: 13px; border: 2px solid var(--wine);
+    padding: 10px 14px; background: #fff; display: none;
+  }
+  .err.show { display: block; }
+
+  footer {
+    border-top: 3px solid var(--lead);
+    padding: 14px clamp(20px, 5vw, 64px);
+    font-size: 11.5px; opacity: .6;
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+  }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="sampler" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <h1>glass<em>2</em>svg</h1>
+  </div>
+  <p class="tagline">turn a stained-glass drawing into clean, cuttable pieces. no vector-app cleverness, just edges.</p>
+</header>
+
+<main>
+  <section class="controls">
+    <div class="drop" id="drop">
+      <strong>drop a drawing here</strong>
+      <span id="fname">PNG or JPG — black line work on light ground</span>
+      <input type="file" id="file" accept="image/png,image/jpeg,image/webp">
+    </div>
+
+    <fieldset>
+      <legend>Output</legend>
+      <div class="seg" role="tablist">
+        <button type="button" id="modePieces" class="on">pieces</button>
+        <button type="button" id="modeLines">line art</button>
+      </div>
+
+      <div class="row">
+        <label for="threshold">ink threshold</label>
+        <input type="range" id="threshold" min="30" max="200" value="95">
+        <output for="threshold">95</output>
+      </div>
+      <div class="row">
+        <label for="straighten">straighten edges</label>
+        <input type="range" id="straighten" min="0" max="5" step="0.1" value="2.2">
+        <output for="straighten">2.2</output>
+      </div>
+      <div class="row">
+        <label for="sigma">smoothing</label>
+        <input type="range" id="sigma" min="0" max="4" step="0.1" value="1.5">
+        <output for="sigma">1.5</output>
+      </div>
+
+      <details>
+        <summary>advanced</summary>
+        <div class="row">
+          <label for="simplify">node tolerance</label>
+          <input type="range" id="simplify" min="0" max="1" step="0.05" value="0.15">
+          <output for="simplify">0.15</output>
+        </div>
+        <div class="row">
+          <label for="min_area">min piece area</label>
+          <input type="range" id="min_area" min="0" max="600" step="10" value="100">
+          <output for="min_area">100</output>
+        </div>
+        <div class="row">
+          <label for="min_width">min piece width</label>
+          <input type="range" id="min_width" min="0" max="10" step="0.5" value="3">
+          <output for="min_width">3</output>
+        </div>
+        <div class="row">
+          <label for="grow">line grow</label>
+          <input type="range" id="grow" min="0" max="2" step="0.25" value="0.5">
+          <output for="grow">0.5</output>
+        </div>
+        <div class="check">
+          <input type="checkbox" id="auto_threshold">
+          <label for="auto_threshold">auto threshold (Otsu)</label>
+        </div>
+        <div class="check">
+          <input type="checkbox" id="invert">
+          <label for="invert">invert (light lines on dark)</label>
+        </div>
+      </details>
+    </fieldset>
+
+    <button class="go" id="go" disabled>Trace it</button>
+    <p class="err" id="err"></p>
+  </section>
+
+  <section class="stage">
+    <div class="stagebar">
+      <span class="stat" id="stat">nothing traced yet</span>
+      <a class="dl" id="dl" hidden download="template.svg">download svg</a>
+    </div>
+    <div class="canvas" id="canvas">
+      <p class="hint">your template appears here — each piece a separate shape, ready for the cutter</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span>cut carefully.</span>
+  <a href="https://github.com/bscholer/stained-glass-svg">github.com/bscholer/stained-glass-svg</a>
+</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+let file = null, mode = "pieces";
+
+// live slider readouts
+document.querySelectorAll('input[type=range]').forEach(r => {
+  r.addEventListener('input', () => r.nextElementSibling.value = r.value);
+});
+
+const drop = $('drop');
+$('file').addEventListener('change', e => setFile(e.target.files[0]));
+['dragover','dragenter'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('hot'); }));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('hot'); }));
+drop.addEventListener('drop', e => setFile(e.dataTransfer.files[0]));
+
+function setFile(f) {
+  if (!f) return;
+  file = f;
+  $('fname').textContent = `${f.name} · ${(f.size/1024).toFixed(0)} kB`;
+  $('go').disabled = false;
+}
+
+$('modePieces').onclick = () => setMode('pieces');
+$('modeLines').onclick = () => setMode('lines');
+function setMode(m) {
+  mode = m;
+  $('modePieces').classList.toggle('on', m === 'pieces');
+  $('modeLines').classList.toggle('on', m === 'lines');
+}
+
+$('go').onclick = async () => {
+  if (!file) return;
+  const go = $('go'), err = $('err');
+  go.disabled = true; go.textContent = 'Tracing…';
+  err.classList.remove('show');
+  try {
+    const fd = new FormData();
+    fd.append('image', file);
+    fd.append('mode', mode);
+    for (const id of ['threshold','straighten','sigma','simplify','min_area','min_width','grow'])
+      fd.append(id, $(id).value);
+    fd.append('auto_threshold', $('auto_threshold').checked);
+    fd.append('invert', $('invert').checked);
+
+    const res = await fetch('/convert', { method: 'POST', body: fd });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `server error (${res.status})`);
+    }
+    const out = await res.json();
+    $('canvas').innerHTML = out.svg;
+    $('stat').innerHTML = `<b>${out.count}</b> ${mode === 'pieces' ? 'pieces' : 'shapes'} · ${out.width}×${out.height}px`;
+    const blob = new Blob([out.svg], { type: 'image/svg+xml' });
+    const dl = $('dl');
+    if (dl.href) URL.revokeObjectURL(dl.href);
+    dl.href = URL.createObjectURL(blob);
+    dl.download = (file.name.replace(/\.[^.]+$/, '') || 'template') + '.svg';
+    dl.hidden = false;
+  } catch (e) {
+    err.textContent = e.message;
+    err.classList.add('show');
+  } finally {
+    go.disabled = false; go.textContent = 'Trace it';
+  }
+};
+</script>
+</body>
+</html>
