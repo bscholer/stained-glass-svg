@@ -61,8 +61,11 @@
   .controls {
     border-right: 2px solid var(--lead);
     padding: 16px clamp(14px, 2vw, 24px) 30px;
-    overflow-y: auto;
+    overflow-y: auto; overflow-x: hidden; min-width: 0;
   }
+  .controls * { min-width: 0; }
+  #fname { display: block; overflow-wrap: anywhere; }
+  input[type=range] { width: 100%; }
   @media (max-width: 860px){ .controls{ border-right:0; border-bottom:2px solid var(--lead);} }
 
   .drop {
@@ -149,6 +152,7 @@
   svg .handle:hover { fill: var(--teal); }
   svg .warn { fill: var(--wine); fill-opacity: .85; stroke: #fff; stroke-width: 1.5; vector-effect: non-scaling-stroke; pointer-events: none; }
   svg .cutpt { fill: var(--amber); stroke: var(--ink); stroke-width: 1.5; vector-effect: non-scaling-stroke; pointer-events: none; }
+  svg .cutline { stroke: var(--amber); stroke-width: 2; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; pointer-events: none; }
 
   footer { border-top: 2px solid var(--lead); padding: 6px clamp(16px, 4vw, 48px); font-size: 11px; opacity: .6; display: flex; justify-content: space-between; flex: 0 0 auto; }
   footer a { color: inherit; }

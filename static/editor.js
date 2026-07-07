@@ -182,7 +182,7 @@ function wireCanvas() {
     last = [e.clientX, e.clientY]; setVB();
   });
   svg.addEventListener("pointerup", (e) => {
-    if (panning && !moved) onEmptyClick();
+    if (panning && !moved) onEmptyClick(evtUser(e));
     panning = false;
   });
   svg.addEventListener("mouseover", (e) => {
@@ -193,6 +193,13 @@ function wireCanvas() {
     const p = e.target.closest("path.piece");
     if (p) p.classList.remove("hot");
   });
+  svg.addEventListener("mousemove", (e) => {
+    if (state.tool === "cut" && state.pick.length === 1 && previewLine) {
+      const [ux, uy] = evtUser(e);
+      previewLine.setAttribute("x2", ux); previewLine.setAttribute("y2", uy);
+    }
+  });
+  cv.addEventListener("contextmenu", (e) => e.preventDefault());
 }
 
 // ---------- overlay: handles, warnings, cut points -----------------------
@@ -219,7 +226,11 @@ function drawHandles(r) {
   if (!pc) return;
   pc.rings.forEach((ring, ri) => ring.forEach((nd, ni) => {
     const c = circle(nd.p[0], nd.p[1], 5 * r, "handle", { ri, ni });
-    c.addEventListener("pointerdown", (e) => startNodeDrag(e, ri, ni));
+    c.addEventListener("pointerdown", (e) => {
+      if (e.button === 2 || e.altKey) { e.preventDefault(); e.stopPropagation(); deleteNode(ri, ni); }
+      else startNodeDrag(e, ri, ni);
+    });
+    c.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); deleteNode(ri, ni); });
   }));
 }
 
@@ -237,7 +248,17 @@ function drawWarnings(r) {
   }
 }
 
+let previewLine = null;
 function drawCutPoints(r) {
+  previewLine = null;
+  if (state.pick.length === 1) {
+    const l = document.createElementNS(SVGNS, "line");
+    l.setAttribute("x1", state.pick[0][0]); l.setAttribute("y1", state.pick[0][1]);
+    l.setAttribute("x2", state.pick[0][0]); l.setAttribute("y2", state.pick[0][1]);
+    l.setAttribute("class", "cutline");
+    gOverlay.appendChild(l);
+    previewLine = l;
+  }
   for (const p of state.pick) circle(p[0], p[1], 5 * r, "cutpt");
 }
 
@@ -267,6 +288,21 @@ function startNodeDrag(e, ri, ni) {
   svg.addEventListener("pointerup", up);
 }
 
+function deleteNode(ri, ni) {
+  const pc = piece(state.sel);
+  if (!pc) return;
+  const ring = pc.rings[ri];
+  if (ring.length <= 3) { toolHint("a piece needs at least 3 corners"); return; }
+  pushUndo();
+  ring.splice(ni, 1);
+  // the two neighbours now join directly — make that segment straight
+  const prev = ring[(ni - 1 + ring.length) % ring.length];
+  const next = ring[ni % ring.length];
+  prev.cout = null; next.cin = null;
+  pieceEl(pc.id).setAttribute("d", pieceD(pc));
+  markDirty(); renderOverlay();
+}
+
 // ---------- clicks by tool ----------------------------------------------
 function onPieceDown(id, e) {
   if (state.tool === "delete") {
@@ -274,10 +310,8 @@ function onPieceDown(id, e) {
   } else if (state.tool === "nodes") {
     state.sel = id; applyClasses(); renderOverlay();
   } else if (state.tool === "cut") {
-    if (state.sel !== id) { state.sel = id; state.pick = []; applyClasses(); }
-    state.pick.push(evtUser(e));
-    renderOverlay();
-    if (state.pick.length === 2) doCut();
+    if (state.sel == null) { state.sel = id; applyClasses(); }
+    addCutPoint(evtUser(e));
   } else if (state.tool === "combine") {
     if (state.pick.includes(id)) state.pick = state.pick.filter((x) => x !== id);
     else state.pick.push(id);
@@ -286,10 +320,24 @@ function onPieceDown(id, e) {
   }
 }
 
-function onEmptyClick() {
+function onEmptyClick(pos) {
   if (state.tool === "nodes") { state.sel = null; applyClasses(); renderOverlay(); }
-  else if (state.tool === "cut") { state.sel = null; state.pick = []; applyClasses(); renderOverlay(); }
-  else if (state.tool === "combine") { state.pick = []; applyClasses(); renderOverlay(); }
+  else if (state.tool === "cut") {
+    if (state.sel != null && state.pick.length >= 1) addCutPoint(pos);   // 2nd point can land off the piece
+    else { state.sel = null; state.pick = []; applyClasses(); renderOverlay(); cutHint(); }
+  } else if (state.tool === "combine") { state.pick = []; applyClasses(); renderOverlay(); }
+}
+
+function addCutPoint(pos) {
+  state.pick.push(pos);
+  if (state.pick.length === 2) doCut();
+  else { renderOverlay(); cutHint(); }
+}
+
+function cutHint() {
+  if (state.tool !== "cut") return;
+  if (state.sel == null) toolHint("cut: click the piece you want to slice", true);
+  else toolHint("now click where the cut ends — it follows your cursor", true);
 }
 
 // ---------- geometry helpers --------------------------------------------
@@ -310,6 +358,101 @@ function tightCorners(ring, degThresh = 32) {
     if (ang < degThresh && Math.min(l1, l2) > 4) bad.push(i);
   }
   return bad;
+}
+
+function bezPt(a, b, u) {
+  const iu = 1 - u;
+  return [
+    iu * iu * iu * a.p[0] + 3 * iu * iu * u * a.cout[0] + 3 * iu * u * u * b.cin[0] + u * u * u * b.p[0],
+    iu * iu * iu * a.p[1] + 3 * iu * iu * u * a.cout[1] + 3 * iu * u * u * b.cin[1] + u * u * u * b.p[1],
+  ];
+}
+
+// dense sample of a ring (curves + long straight edges) for distance queries
+function sampleDense(ring, maxSeg = 4) {
+  const pts = [];
+  const N = ring.length;
+  for (let i = 0; i < N; i++) {
+    const a = ring[i], b = ring[(i + 1) % N];
+    const d = Math.hypot(b.p[0] - a.p[0], b.p[1] - a.p[1]);
+    const steps = Math.max(1, Math.ceil(d / maxSeg));
+    const curve = a.cout && b.cin;
+    for (let t = 0; t < steps; t++) {
+      const u = t / steps;
+      pts.push(curve ? bezPt(a, b, u)
+        : [a.p[0] + (b.p[0] - a.p[0]) * u, a.p[1] + (b.p[1] - a.p[1]) * u]);
+    }
+  }
+  return pts;
+}
+
+function minDistTo(pt, pts) {
+  let m = Infinity;
+  for (const q of pts) { const d = Math.hypot(pt[0] - q[0], pt[1] - q[1]); if (d < m) m = d; }
+  return m;
+}
+
+function longestRun(flags) {
+  const N = flags.length;
+  if (flags.every((f) => f) || !flags.some((f) => f)) return null;
+  let start = 0;
+  while (flags[start]) start = (start + 1) % N;    // rotate to a false so runs don't wrap
+  let best = null, cur = null;
+  for (let k = 0; k < N; k++) {
+    const i = (start + k) % N;
+    if (flags[i]) { if (cur === null) cur = [i, i]; else cur[1] = i; }
+    else if (cur) { if (!best || runLen(cur, N) > runLen(best, N)) best = cur; cur = null; }
+  }
+  if (cur && (!best || runLen(cur, N) > runLen(best, N))) best = cur;
+  return best;
+}
+const runLen = ([s, e], N) => ((e - s + N) % N) + 1;
+
+function cloneNode(nd) {
+  return { p: nd.p.slice(), cin: nd.cin ? nd.cin.slice() : null, cout: nd.cout ? nd.cout.slice() : null };
+}
+
+// Weld two adjacent rings into one, KEEPING every edge except the two facing
+// spans across the lead gap (those become straight bridges). Returns a node
+// ring, or null if the pieces don't share a clear border.
+function weldRings(ringA, ringB) {
+  const sA = sampleDense(ringA), sB = sampleDense(ringB);
+  const distA = ringA.map((nd) => minDistTo(nd.p, sB));
+  const distB = ringB.map((nd) => minDistTo(nd.p, sA));
+  const dmin = Math.min(...distA);
+  if (dmin > 18) return null;                       // not adjacent
+  const DIST = dmin + 9;
+  const nearA = distA.map((d) => d < DIST);
+  const nearB = distB.map((d) => d < DIST);
+  const runA = longestRun(nearA), runB = longestRun(nearB);
+  if (!runA || !runB) return null;
+
+  const keep = (ring, run) => {              // far arc: nodes just past the near run
+    const N = ring.length, out = [];
+    for (let k = 0; k < N; k++) {
+      const i = (run[1] + 1 + k) % N;
+      if (i === run[0]) break;
+      out.push(cloneNode(ring[i]));
+    }
+    return out;                              // ordered start..end
+  };
+  const keptA = keep(ringA, runA);
+  let keptB = keep(ringB, runB);
+  if (keptA.length < 2 || keptB.length < 2) return null;
+
+  const endA = keptA[keptA.length - 1].p, startA = keptA[0].p;
+  const startB = keptB[0].p, endB = keptB[keptB.length - 1].p;
+  // attach B so endA meets B's nearer end; reverse B if needed (swap cin/cout)
+  if (Math.hypot(endA[0] - endB[0], endA[1] - endB[1]) <
+      Math.hypot(endA[0] - startB[0], endA[1] - startB[1])) {
+    keptB = keptB.reverse().map((nd) => { const t = nd.cin; nd.cin = nd.cout; nd.cout = t; return nd; });
+  }
+  // bridges are straight: kill control points at the four junctions
+  keptA[0].cin = null;
+  keptA[keptA.length - 1].cout = null;
+  keptB[0].cin = null;
+  keptB[keptB.length - 1].cout = null;
+  return keptA.concat(keptB);
 }
 
 // flatten a ring's cubic segments into a dense polygon for rasterizing
@@ -473,8 +616,8 @@ function doCut() {
   const parts = tracedPieces(ctx, W, H, 40);
   if (parts.length < 2) {
     popUndo();
-    toolHint("cut didn't split the piece — draw across it, edge to edge");
     state.sel = null; applyClasses(); renderOverlay();
+    toolHint("that cut didn't cross the piece — slice edge to edge", true);
     return;
   }
   const idx = state.pieces.indexOf(pc);
@@ -482,7 +625,7 @@ function doCut() {
   state.pieces.splice(idx, 1, ...made);
   state.sel = null;
   markDirty(); renderPieces(); renderOverlay(); updateStat();
-  toolHint(`split into ${made.length} pieces`);
+  toolHint(`split into ${made.length} — click another piece to keep cutting`, true);
 }
 
 function doCombine() {
@@ -490,22 +633,22 @@ function doCombine() {
   state.pick = [];
   const pcs = ids.map(piece).filter(Boolean);
   if (pcs.length < 2) { renderOverlay(); return; }
-  pushUndo();
-  // stroke width bridges the lead-line gap between the two pieces
-  const bridge = Math.max(4, state.W * 0.012);
-  const { ctx, W, H } = rasterizePieces(pcs, bridge);
-  const parts = tracedPieces(ctx, W, H, 40);
-  if (parts.length !== 1) {
-    popUndo();
-    toolHint("those pieces aren't adjacent — nothing to weld");
+  // Weld the two OUTER rings geometrically so every non-facing edge (and its
+  // curves) survives; only the shared lead-gap spans become straight bridges.
+  const merged = weldRings(pcs[0].rings[0], pcs[1].rings[0]);
+  if (!merged) {
+    toolHint("those pieces don't share a clear edge — can't weld");
     applyClasses(); renderOverlay();
     return;
   }
+  pushUndo();
+  // keep any holes from either piece
+  const holes = pcs.flatMap((p) => p.rings.slice(1));
   const idx = Math.min(...pcs.map((p) => state.pieces.indexOf(p)));
   state.pieces = state.pieces.filter((p) => !pcs.includes(p));
-  state.pieces.splice(idx, 0, { id: state.nextId++, rings: parts[0].rings });
+  state.pieces.splice(idx, 0, { id: state.nextId++, rings: [merged, ...holes] });
   markDirty(); renderPieces(); renderOverlay(); updateStat();
-  toolHint("welded into one piece");
+  toolHint("welded — shared edge removed");
 }
 
 // ---------- undo ---------------------------------------------------------
@@ -550,12 +693,12 @@ function refreshDownload() {
 }
 
 let hintTimer = null;
-function toolHint(msg) {
+function toolHint(msg, sticky) {
   const h = $("toolhint");
+  clearTimeout(hintTimer);
   if (!msg) { h.hidden = true; return; }
   h.textContent = msg; h.hidden = false;
-  clearTimeout(hintTimer);
-  hintTimer = setTimeout(() => { h.hidden = true; }, 2600);
+  if (!sticky) hintTimer = setTimeout(() => { h.hidden = true; }, 2600);
 }
 
 // ---------- controls wiring ---------------------------------------------
@@ -587,12 +730,13 @@ $("toolset").addEventListener("click", (e) => {
   state.tool = b.dataset.tool;
   state.sel = null; state.pick = [];
   for (const x of $("toolset").children) x.classList.toggle("on", x === b);
-  applyClasses(); renderOverlay(); toolHint(TOOL_HINTS[state.tool]);
+  applyClasses(); renderOverlay();
+  if (state.tool === "cut") cutHint();
+  else toolHint(TOOL_HINTS[state.tool], true);
 });
 const TOOL_HINTS = {
-  nodes: "click a piece, then drag its corner dots",
+  nodes: "click a piece, then drag its corners · alt/right-click a corner deletes it",
   delete: "click a piece to remove it",
-  cut: "click a piece, then click two points to slice it",
   combine: "click two adjacent pieces to weld them",
 };
 
@@ -647,4 +791,5 @@ function loadTrace(out) {
   $("undo").disabled = true;
   buildSvg();
   updateStat(); refreshDownload();
+  if (state.mode === "pieces") toolHint(TOOL_HINTS.nodes, true);
 }
