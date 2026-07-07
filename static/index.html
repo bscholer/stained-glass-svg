@@ -159,6 +159,24 @@
   .dl:hover { background: var(--ink); color: var(--paper); }
   .dl[hidden] { display: none; }
 
+  .tools { display: flex; gap: 8px; align-items: center; }
+  .tool {
+    background: transparent; color: var(--ink);
+    border: 2px solid var(--ink); padding: 8px 14px;
+    font: inherit; font-size: 13px; cursor: pointer;
+  }
+  .tool:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
+  .tool:disabled { opacity: .35; cursor: not-allowed; }
+  .tool.armed { background: var(--wine); color: var(--paper); border-color: var(--wine); box-shadow: 3px 3px 0 var(--ink); }
+  .tool[hidden] { display: none; }
+
+  /* editing: pieces respond to the cursor only in edit mode */
+  .canvas svg.editing path { cursor: pointer; transition: fill .1s, opacity .1s; }
+  .canvas svg.editing path:hover { fill: var(--wine) !important; }
+  .canvas svg path.gone { opacity: 0; pointer-events: none; }
+  .editnote { font-size: 12px; opacity: .7; font-style: italic; font-family: "Fraunces", serif; }
+  .editnote[hidden] { display: none; }
+
   .canvas {
     flex: 1; min-height: 380px;
     background:
@@ -272,7 +290,12 @@
   <section class="stage">
     <div class="stagebar">
       <span class="stat" id="stat">nothing traced yet</span>
-      <a class="dl" id="dl" hidden download="template.svg">download svg</a>
+      <div class="tools">
+        <span class="editnote" id="editnote" hidden>click a piece to remove it · ⌘/Ctrl-Z to undo</span>
+        <button class="tool" id="undo" hidden disabled>undo</button>
+        <button class="tool" id="lock" hidden>Lock &amp; Edit</button>
+        <a class="dl" id="dl" hidden download="template.svg">download svg</a>
+      </div>
     </div>
     <div class="canvas" id="canvas">
       <p class="hint">your template appears here — each piece a separate shape, ready for the cutter</p>
@@ -288,6 +311,9 @@
 <script>
 const $ = id => document.getElementById(id);
 let file = null, mode = "pieces";
+let editing = false;          // "Lock & Edit" engaged
+let deleted = [];             // undo stack of removed <path> elements
+let baseName = "template";
 
 // live slider readouts
 document.querySelectorAll('input[type=range]').forEach(r => {
@@ -315,8 +341,73 @@ function setMode(m) {
   $('modeLines').classList.toggle('on', m === 'lines');
 }
 
+// --- editing -------------------------------------------------------------
+// A recompute rebuilds every piece from scratch, so manual edits can't be
+// remapped onto new geometry. Rather than pretend to preserve them, we lock
+// the params once you start editing and guard re-trace behind a confirm.
+
+function onPieceClick(e) {
+  if (!editing) return;
+  const p = e.target.closest('path');
+  if (!p || p.classList.contains('gone')) return;
+  p.classList.add('gone');
+  deleted.push(p);
+  refreshEdit();
+}
+
+function undo() {
+  const p = deleted.pop();
+  if (p) p.classList.remove('gone');
+  refreshEdit();
+}
+
+function refreshEdit() {
+  const svg = $('canvas').querySelector('svg');
+  const live = svg ? svg.querySelectorAll('path:not(.gone)').length : 0;
+  const noun = mode === 'pieces' ? 'pieces' : 'shapes';
+  $('stat').innerHTML = `<b>${live}</b> ${noun}${deleted.length ? ` · ${deleted.length} removed` : ''}`;
+  $('undo').disabled = deleted.length === 0;
+  refreshDownload();
+}
+
+function setEditing(on) {
+  editing = on;
+  const svg = $('canvas').querySelector('svg');
+  if (svg) svg.classList.toggle('editing', on);
+  $('lock').classList.toggle('armed', on);
+  $('lock').innerHTML = on ? 'Editing — done' : 'Lock &amp; Edit';
+  $('undo').hidden = !on;
+  $('editnote').hidden = !on;
+  // sliders/re-trace disabled while editing to make the freeze explicit
+  document.querySelectorAll('.controls input, .controls button, .controls summary')
+    .forEach(el => { if (el.id !== 'go') el.disabled = on; });
+}
+
+function refreshDownload() {
+  const svg = $('canvas').querySelector('svg');
+  if (!svg) return;
+  const clone = svg.cloneNode(true);
+  clone.classList.remove('editing');
+  clone.querySelectorAll('path.gone').forEach(p => p.remove());
+  const dl = $('dl');
+  if (dl.href) URL.revokeObjectURL(dl.href);
+  dl.href = URL.createObjectURL(
+    new Blob([clone.outerHTML], { type: 'image/svg+xml' }));
+  dl.download = baseName + '.svg';
+  dl.hidden = false;
+}
+
+$('lock').onclick = () => setEditing(!editing);
+$('undo').onclick = undo;
+document.addEventListener('keydown', e => {
+  if (editing && (e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); undo(); }
+});
+
+// --- trace ---------------------------------------------------------------
 $('go').onclick = async () => {
   if (!file) return;
+  if (deleted.length && !confirm('Re-tracing rebuilds every piece and discards your manual edits. Continue?'))
+    return;
   const go = $('go'), err = $('err');
   go.disabled = true; go.textContent = 'Tracing…';
   err.classList.remove('show');
@@ -335,14 +426,14 @@ $('go').onclick = async () => {
       throw new Error(body.detail || `server error (${res.status})`);
     }
     const out = await res.json();
+    if (editing) setEditing(false);
+    deleted = [];
     $('canvas').innerHTML = out.svg;
+    baseName = file.name.replace(/\.[^.]+$/, '') || 'template';
     $('stat').innerHTML = `<b>${out.count}</b> ${mode === 'pieces' ? 'pieces' : 'shapes'} · ${out.width}×${out.height}px`;
-    const blob = new Blob([out.svg], { type: 'image/svg+xml' });
-    const dl = $('dl');
-    if (dl.href) URL.revokeObjectURL(dl.href);
-    dl.href = URL.createObjectURL(blob);
-    dl.download = (file.name.replace(/\.[^.]+$/, '') || 'template') + '.svg';
-    dl.hidden = false;
+    $('canvas').querySelector('svg').addEventListener('click', onPieceClick);
+    $('lock').hidden = false;
+    refreshDownload();
   } catch (e) {
     err.textContent = e.message;
     err.classList.add('show');
