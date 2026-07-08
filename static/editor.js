@@ -275,7 +275,6 @@ function startNodeDrag(e, ri, ni, handleEl) {
   const handle = handleEl || e.target;
   const N = ring.length;
   const prev = ring[(ni - 1 + N) % N], next = ring[(ni + 1) % N];
-  const targets = snapTargets(nd, prev, next);
   const minLen = Math.max(0.15 * lineWidthPx(), 1e-6);
   svg.setPointerCapture(e.pointerId);
   const move = (ev) => {
@@ -287,25 +286,21 @@ function startNodeDrag(e, ri, ni, handleEl) {
       // never tighter than one physical solder-line width either — points
       // closer than that will be bridged by solder anyway
       const thr = Math.max(9 * px2user(), lineWidthPx());
-      let bd = thr;
-      for (const t of targets) {           // 1. snap onto a nearby vertex
-        const d = Math.hypot(ux - t[0], uy - t[1]);
-        if (d < bd) { bd = d; hit = t; }
+      // snap onto a line to keep edges straight (no point-to-point vertex
+      // snapping — that let you drag a corner onto another vertex of the
+      // same piece and fold it into a degenerate shape, especially when
+      // zoomed in far enough that the snap radius covers a whole edge)
+      const pp = ring[(ni - 2 + N) % N].p, nn = ring[(ni + 2) % N].p;
+      let best = null, bd = thr;
+      for (const [a, b] of [[prev.p, next.p], [pp, prev.p], [nn, next.p]]) {
+        const pr = projLine(ux, uy, a, b);
+        if (pr && pr.d < bd) { bd = pr.d; best = pr; }
       }
-      if (hit) { ux = hit[0]; uy = hit[1]; }
-      else {                               // 2. snap onto a line to keep edges straight
-        const pp = ring[(ni - 2 + N) % N].p, nn = ring[(ni + 2) % N].p;
-        let best = null, bd = thr;
-        for (const [a, b] of [[prev.p, next.p], [pp, prev.p], [nn, next.p]]) {
-          const pr = projLine(ux, uy, a, b);
-          if (pr && pr.d < bd) { bd = pr.d; best = pr; }
-        }
-        if (best) { ux = best.x; uy = best.y; }
-        else {                             // 3. else align to a neighbour's axis
-          for (const nb of [prev.p, next.p]) {
-            if (Math.abs(ux - nb[0]) < thr) ux = nb[0];
-            if (Math.abs(uy - nb[1]) < thr) uy = nb[1];
-          }
+      if (best) { ux = best.x; uy = best.y; hit = [best.x, best.y]; }
+      else {                               // else align to a neighbour's axis
+        for (const nb of [prev.p, next.p]) {
+          if (Math.abs(ux - nb[0]) < thr) ux = nb[0];
+          if (Math.abs(uy - nb[1]) < thr) uy = nb[1];
         }
       }
     }
@@ -364,22 +359,6 @@ function ringSelfIntersects(pts) {
     }
   }
   return false;
-}
-
-// vertices near enough to the dragged corner's current spot to plausibly be
-// its partner across the shared solder seam (minus the node itself and its
-// two neighbours) — capped so dragging never snaps across open canvas onto
-// some unrelated piece's edge that isn't actually adjacent here
-function snapTargets(nd, prev, next) {
-  const skip = new Set([nd, prev, next]);
-  const R = 4 * lineWidthPx();
-  const [ox, oy] = nd.p;
-  const out = [];
-  for (const pc of state.pieces)
-    for (const rg of pc.rings)
-      for (const q of rg)
-        if (!skip.has(q) && Math.hypot(q.p[0] - ox, q.p[1] - oy) <= R) out.push(q.p);
-  return out;
 }
 
 // perpendicular projection of (px,py) onto the infinite line through a,b
@@ -809,7 +788,7 @@ $("toolset").addEventListener("click", (e) => {
   else toolHint(TOOL_HINTS[state.tool], true);
 });
 const TOOL_HINTS = {
-  nodes: "drag corners — snaps to nearby points (hold shift to skip) · alt/right-click a corner deletes it",
+  nodes: "drag corners — snaps to straight lines & neighbour axes (hold shift to skip) · alt/right-click a corner deletes it",
   delete: "click a piece to remove it",
 };
 
