@@ -751,16 +751,15 @@ $("go").onclick = async () => {
   go.disabled = true; go.textContent = "Tracing…";
   $("err").hidden = true;
   try {
-    const fd = new FormData();
-    fd.append("image", state.file);
-    fd.append("mode", state.mode);
+    const opts = {};
     for (const id of ["threshold", "straighten", "sigma", "simplify", "min_area", "min_width", "grow"])
-      fd.append(id, $(id).value);
-    fd.append("auto_threshold", $("auto_threshold").checked);
-    fd.append("invert", $("invert").checked);
-    const res = await fetch("/convert", { method: "POST", body: fd });
-    if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.detail || `server error (${res.status})`); }
-    const out = await res.json();
+      opts[id] = parseFloat($(id).value);
+    opts.auto_threshold = $("auto_threshold").checked;
+    opts.invert = $("invert").checked;
+    // yield a frame so the "Tracing…" label paints before the sync trace runs
+    await new Promise((r) => setTimeout(r, 0));
+    const out = await traceImage(state.file, state.mode, opts);
+    if (!out.count) throw new Error("no line-work detected — try adjusting the threshold");
     loadTrace(out);
   } catch (e) {
     $("err").textContent = e.message; $("err").hidden = false;

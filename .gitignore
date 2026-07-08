@@ -1,7 +1,4 @@
-__pycache__/
-*.pyc
-.pytest_cache/
+node_modules/
 *.svg
 *.png
-!static/*.png
-deploy.sh
+!site/**/*.png

@@ -15,48 +15,47 @@ them up with a few passes tuned for stained-glass patterns:
 - centripetal Catmull-Rom curve fitting (smooth, no overshoot)
 - edge straightening: nearly-straight runs snap to true lines, but only when
   corner-bounded, so organic curves stay organic
-- bump bridging: little AI-artifact warts on straight edges get shaved off
+- bump bridging: little artifact warts on straight edges get shaved off
 - sliver/speck filtering: pieces too thin or small to cut are dropped
 
-## Web UI
+**It runs entirely in your browser** — the tracer is plain JS, no server, no
+upload. Your images never leave the machine.
+
+## Use it
+
+Live at **https://bscholer.github.io/stained-glass-svg/**. Drop in a drawing,
+tweak the knobs, edit the pieces, download the SVG.
+
+Or run it locally — it's a static site, so any file server works:
 
 ```bash
-uvicorn app:app --port 8080
-# or
-docker run -p 8080:8080 ghcr.io/bscholer/stained-glass-svg:latest
+cd site && python3 -m http.server 8080   # then open http://localhost:8080
 ```
 
-Open http://localhost:8080, drop in a drawing, tweak, download the SVG.
+## Editing
 
-## CLI
+After tracing, the built-in editor lets you:
 
-```bash
-python3 glass2svg.py drawing.png -o template.svg            # pieces mode
-python3 glass2svg.py drawing.png -o lines.svg --mode lines  # line art
-python3 glass2svg.py --help                                 # all knobs
-```
+- **nodes** — drag corners; snapping locks onto nearby vertices, straight
+  lines, and neighbour axes (hold shift to bypass)
+- **delete** — remove a piece
+- **cut** — slice a piece in two along a line
+- **⚠ corners** — flag inside corners too tight for your grinder bit, sized
+  from the finished dimension + bit diameter you set
 
-Useful knobs: `--threshold` (ink cutoff, default 95), `--straighten`
-(edge-flattening tolerance in px, 0 disables), `--sigma` (smoothing),
-`--min-area` / `--min-width` (piece filters).
+## How it works
 
-## Quality evaluation
-
-`eval_svg.py` scores an output SVG against its source image — IoU,
-line-width fidelity, and width wobble — by rendering it back to raster
-(requires `rsvg-convert`):
-
-```bash
-python3 eval_svg.py drawing.png template.svg --diff diff.png
-```
+`site/trace.js` is the whole pipeline: binarize (fixed cutoff or Otsu) →
+morphological close → 2× upscale + ink grow → connected-component labelling →
+Moore boundary tracing (outer + holes) → Gaussian contour smoothing →
+corner-bounded straight-run flattening → centripetal Catmull-Rom béziers.
+The sliver filter uses a Felzenszwalb Euclidean distance transform.
 
 ## Development
 
 ```bash
-pip install -r requirements.txt pytest httpx
-pytest
+node test/trace.test.cjs   # pipeline smoke tests (no deps)
 ```
 
-CI runs tests on every push/PR. Pushes to `main` publish
-`ghcr.io/bscholer/stained-glass-svg:latest`; tagging `vX.Y.Z` publishes a
-versioned image and cuts a GitHub release.
+CI syntax-checks and runs the tests on every push/PR; pushes to `main` deploy
+the `site/` folder to GitHub Pages.
