@@ -629,8 +629,9 @@ document.querySelectorAll("input[type=range]").forEach((r) =>
   r.addEventListener("input", () => (r.nextElementSibling.value = r.value)));
 
 // cut-feasibility knobs re-flag corners live (no re-trace)
+const reflag = () => { if (state.showWarn && svg) renderOverlay(); };
 ["final_size", "bit_size"].forEach((id) =>
-  $(id).addEventListener("input", () => { if (state.showWarn && svg) renderOverlay(); }));
+  ["input", "change"].forEach((ev) => $(id).addEventListener(ev, reflag)));
 
 const drop = $("drop");
 $("file").addEventListener("change", (e) => setFile(e.target.files[0]));
