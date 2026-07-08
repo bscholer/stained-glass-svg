@@ -16,6 +16,7 @@ const state = {
   sel: null,         // selected piece id (nodes/cut)
   pick: [],          // cut: [[x,y],...] the two slice points
   showWarn: true,
+  snap: true,
   undoStack: [],
   nextId: 1,
 };
@@ -267,25 +268,91 @@ function startNodeDrag(e, ri, ni) {
   e.stopPropagation();
   pushUndo();
   const pc = piece(state.sel);
-  const nd = pc.rings[ri][ni];
+  const ring = pc.rings[ri];
+  const nd = ring[ni];
   const el = pieceEl(pc.id);
   const handle = e.target;
+  const N = ring.length;
+  const prev = ring[(ni - 1 + N) % N], next = ring[(ni + 1) % N];
+  const targets = snapTargets(nd, prev, next);
   svg.setPointerCapture(e.pointerId);
   const move = (ev) => {
-    const [ux, uy] = evtUser(ev);
+    let [ux, uy] = evtUser(ev);
+    let hit = null;
+    if (state.snap && !ev.shiftKey) {
+      const thr = 9 * px2user();
+      let bd = thr;
+      for (const t of targets) {           // 1. snap onto a nearby vertex
+        const d = Math.hypot(ux - t[0], uy - t[1]);
+        if (d < bd) { bd = d; hit = t; }
+      }
+      if (hit) { ux = hit[0]; uy = hit[1]; }
+      else {                               // 2. snap onto a line to keep edges straight
+        const pp = ring[(ni - 2 + N) % N].p, nn = ring[(ni + 2) % N].p;
+        let best = null, bd = thr;
+        for (const [a, b] of [[prev.p, next.p], [pp, prev.p], [nn, next.p]]) {
+          const pr = projLine(ux, uy, a, b);
+          if (pr && pr.d < bd) { bd = pr.d; best = pr; }
+        }
+        if (best) { ux = best.x; uy = best.y; }
+        else {                             // 3. else align to a neighbour's axis
+          for (const nb of [prev.p, next.p]) {
+            if (Math.abs(ux - nb[0]) < thr) ux = nb[0];
+            if (Math.abs(uy - nb[1]) < thr) uy = nb[1];
+          }
+        }
+      }
+    }
     const dx = ux - nd.p[0], dy = uy - nd.p[1];
     for (const q of [nd.p, nd.cin, nd.cout]) if (q) { q[0] += dx; q[1] += dy; }
     el.setAttribute("d", pieceD(pc));
     handle.setAttribute("cx", nd.p[0]); handle.setAttribute("cy", nd.p[1]);
+    showSnap(hit, px2user());
   };
   const up = (ev) => {
     svg.releasePointerCapture(ev.pointerId);
     svg.removeEventListener("pointermove", move);
     svg.removeEventListener("pointerup", up);
+    snapMark = null;
     markDirty(); renderOverlay();
   };
   svg.addEventListener("pointermove", move);
   svg.addEventListener("pointerup", up);
+}
+
+// every other vertex in the drawing (minus the dragged node and its two
+// neighbours), so a corner can land exactly on the shared lead line of the
+// piece next to it and the two edges stay coincident
+function snapTargets(nd, prev, next) {
+  const skip = new Set([nd, prev, next]);
+  const out = [];
+  for (const pc of state.pieces)
+    for (const rg of pc.rings)
+      for (const q of rg)
+        if (!skip.has(q)) out.push(q.p);
+  return out;
+}
+
+// perpendicular projection of (px,py) onto the infinite line through a,b
+function projLine(px, py, a, b) {
+  const vx = b[0] - a[0], vy = b[1] - a[1];
+  const L2 = vx * vx + vy * vy;
+  if (L2 < 1e-9) return null;
+  const t = ((px - a[0]) * vx + (py - a[1]) * vy) / L2;
+  const x = a[0] + t * vx, y = a[1] + t * vy;
+  return { x, y, d: Math.hypot(px - x, py - y) };
+}
+
+let snapMark = null;
+function showSnap(pt, r) {
+  if (!pt) { if (snapMark) snapMark.setAttribute("r", 0); return; }
+  if (!snapMark) {
+    snapMark = document.createElementNS(SVGNS, "circle");
+    snapMark.setAttribute("class", "snap");
+    gOverlay.appendChild(snapMark);
+  }
+  snapMark.setAttribute("cx", pt[0]); snapMark.setAttribute("cy", pt[1]);
+  snapMark.setAttribute("r", 8 * r);
 }
 
 function deleteNode(ri, ni) {
@@ -663,11 +730,12 @@ $("toolset").addEventListener("click", (e) => {
   else toolHint(TOOL_HINTS[state.tool], true);
 });
 const TOOL_HINTS = {
-  nodes: "click a piece, then drag its corners · alt/right-click a corner deletes it",
+  nodes: "drag corners — snaps to nearby points (hold shift to skip) · alt/right-click a corner deletes it",
   delete: "click a piece to remove it",
 };
 
 $("warnToggle").onclick = () => { state.showWarn = !state.showWarn; $("warnToggle").classList.toggle("on", state.showWarn); renderOverlay(); };
+$("snapToggle").onclick = () => { state.snap = !state.snap; $("snapToggle").classList.toggle("on", state.snap); };
 $("undo").onclick = undo;
 $("fit").onclick = fitView;
 document.addEventListener("keydown", (e) => {
@@ -714,7 +782,7 @@ function loadTrace(out) {
   $("toolset").hidden = state.mode !== "pieces";
   state.tool = state.mode === "pieces" ? "nodes" : "nodes";
   for (const x of $("toolset").children) x.classList.toggle("on", x.dataset.tool === "nodes");
-  $("warnToggle").hidden = false; $("undo").hidden = false; $("fit").hidden = false;
+  $("warnToggle").hidden = false; $("snapToggle").hidden = false; $("undo").hidden = false; $("fit").hidden = false;
   $("undo").disabled = true;
   buildSvg();
   updateStat(); refreshDownload();
