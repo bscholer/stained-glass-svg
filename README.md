@@ -1,3 +1,5 @@
+<img src="static/favicon.svg" width="72" align="right" alt="glass2svg logo">
+
 # stained-glass-svg
 
 Convert a JPG/PNG stained-glass drawing into a clean, cut-ready SVG for a

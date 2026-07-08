@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <clipPath id="frame">
+      <rect x="1" y="1" width="62" height="62" rx="13"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#frame)" stroke="#2b2620" stroke-width="3.5" stroke-linejoin="round">
+    <polygon fill="#d98e32" points="0,0 44,0 40,12 26,30 0,22"/>
+    <polygon fill="#7899b0" points="44,0 64,0 64,20 40,12"/>
+    <polygon fill="#3e7f74" points="0,22 26,30 18,64 0,64"/>
+    <polygon fill="#94393f" points="26,30 40,12 64,20 64,52 40,44"/>
+    <polygon fill="#7d8f4e" points="26,30 40,44 34,64 18,64"/>
+    <polygon fill="#d98e32" points="40,44 64,52 64,64 34,64"/>
+    <polygon fill="#ffffff" opacity="0.18" points="0,0 64,0 0,34" stroke="none"/>
+  </g>
+  <rect x="1.5" y="1.5" width="61" height="61" rx="12.5" fill="none" stroke="#2b2620" stroke-width="3"/>
+</svg>
