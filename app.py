@@ -14,6 +14,20 @@ MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 STATIC = pathlib.Path(__file__).parent / "static"
 
 app = FastAPI(title="glass2svg")
+
+
+@app.middleware("http")
+async def revalidate(request, call_next):
+    # The UI is a single evolving page; without this Cloudflare caches
+    # index.html/editor.js by extension and serves a stale build after a
+    # deploy (the LAN IP looks fine because it bypasses the edge). "no-cache"
+    # keeps the asset cacheable but forces revalidation against the origin,
+    # so a new version always comes through (ETag makes the check a cheap 304).
+    resp = await call_next(request)
+    resp.headers.setdefault("Cache-Control", "no-cache, must-revalidate")
+    return resp
+
+
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
