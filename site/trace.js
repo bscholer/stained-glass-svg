@@ -32,6 +32,12 @@ function decodeToGray(file) {
       const cv = document.createElement("canvas");
       cv.width = w; cv.height = h;
       const ctx = cv.getContext("2d", { willReadFrequently: true });
+      // Flatten onto white first: a transparent PNG background is glass, not
+      // ink. Without this, transparent pixels read as (0,0,0,0) — pure black —
+      // which inverts the whole drawing (background becomes one giant piece,
+      // real pieces vanish). OpenCV's decode did this implicitly.
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, w, h);
       ctx.drawImage(img, 0, 0);
       const px = ctx.getImageData(0, 0, w, h).data;
       const gray = new Uint8Array(w * h);
