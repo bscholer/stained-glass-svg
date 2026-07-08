@@ -14,7 +14,7 @@ const state = {
   vb: null,          // {x,y,w,h} current viewBox
   tool: "nodes",
   sel: null,         // selected piece id (nodes/cut)
-  pick: [],          // combine: [id,...]; cut: [[x,y],...]
+  pick: [],          // cut: [[x,y],...] the two slice points
   showWarn: true,
   undoStack: [],
   nextId: 1,
@@ -112,8 +112,7 @@ function pieceEl(id) { return gPieces.querySelector(`path[data-id="${id}"]`); }
 function applyClasses() {
   for (const p of gPieces.children) {
     const id = +p.dataset.id;
-    p.classList.toggle("sel", state.tool !== "combine" && state.sel === id);
-    p.classList.toggle("pick", state.tool === "combine" && state.pick.includes(id));
+    p.classList.toggle("sel", state.sel === id);
   }
 }
 
@@ -187,7 +186,7 @@ function wireCanvas() {
   });
   svg.addEventListener("mouseover", (e) => {
     const p = e.target.closest("path.piece");
-    if (p && (state.tool === "delete" || state.tool === "combine")) p.classList.add("hot");
+    if (p && state.tool === "delete") p.classList.add("hot");
   });
   svg.addEventListener("mouseout", (e) => {
     const p = e.target.closest("path.piece");
@@ -235,13 +234,14 @@ function drawHandles(r) {
 }
 
 function drawWarnings(r) {
+  const bitR = bitRadiusPx();
   for (const pc of state.pieces) {
     for (const ring of pc.rings) {
-      const bad = tightCorners(ring);
+      const bad = tightCorners(ring, bitR);
       for (const i of bad) {
         const c = circle(ring[i].p[0], ring[i].p[1], 6 * r, "warn");
         const t = document.createElementNS(SVGNS, "title");
-        t.textContent = "tight inside corner — hard to cut";
+        t.textContent = "inside corner too tight for the grinder bit";
         c.appendChild(t);
       }
     }
@@ -312,11 +312,6 @@ function onPieceDown(id, e) {
   } else if (state.tool === "cut") {
     if (state.sel == null) { state.sel = id; applyClasses(); }
     addCutPoint(evtUser(e));
-  } else if (state.tool === "combine") {
-    if (state.pick.includes(id)) state.pick = state.pick.filter((x) => x !== id);
-    else state.pick.push(id);
-    applyClasses(); renderOverlay();
-    if (state.pick.length === 2) doCombine();
   }
 }
 
@@ -325,7 +320,7 @@ function onEmptyClick(pos) {
   else if (state.tool === "cut") {
     if (state.sel != null && state.pick.length >= 1) addCutPoint(pos);   // 2nd point can land off the piece
     else { state.sel = null; state.pick = []; applyClasses(); renderOverlay(); cutHint(); }
-  } else if (state.tool === "combine") { state.pick = []; applyClasses(); renderOverlay(); }
+  }
 }
 
 function addCutPoint(pos) {
@@ -344,115 +339,66 @@ function cutHint() {
 function piece(id) { return state.pieces.find((p) => p.id === id); }
 function removePiece(id) { state.pieces = state.pieces.filter((p) => p.id !== id); if (state.sel === id) state.sel = null; }
 
-function tightCorners(ring, degThresh = 32) {
+// grinder bit radius in pixels, from the finished-size + bit-diameter controls
+function bitRadiusPx() {
+  const finalIn = Math.max(0.5, parseFloat($("final_size").value) || 12);
+  const bitIn = Math.max(0.02, parseFloat($("bit_size").value) || 0.25);
+  return (bitIn / 2) * (Math.max(state.W, state.H) / finalIn);
+}
+
+function ringSignedArea(ring) {
+  let a = 0;
+  for (let i = 0, N = ring.length; i < N; i++) {
+    const p = ring[i].p, q = ring[(i + 1) % N].p;
+    a += p[0] * q[1] - q[0] * p[1];
+  }
+  return a / 2;
+}
+
+// length of the near-straight run leaving vertex i in direction dir (+1/-1),
+// so a fillet's contact point is measured against the real edge, not one node
+function collinearRun(ring, i, dir) {
+  const N = ring.length;
+  let prev = ring[i].p, base = null, len = 0;
+  for (let k = 1; k <= N; k++) {
+    const p = ring[((i + dir * k) % N + N) % N].p;
+    const seg = [p[0] - prev[0], p[1] - prev[1]];
+    const sl = Math.hypot(seg[0], seg[1]);
+    if (sl < 1e-6) continue;
+    const d = [seg[0] / sl, seg[1] / sl];
+    if (base && base[0] * d[0] + base[1] * d[1] < 0.966) break;   // >15° bend ends the run
+    if (!base) base = d;
+    len += sl; prev = p;
+  }
+  return len;
+}
+
+// Inside (concave) corners a grinder bit physically can't reach into. At a
+// reflex vertex the void is a wedge of half-angle a; a bit of radius r seats
+// tangent to both edges, touching each at distance r/tan(a) from the apex. If
+// the real edge is shorter than that (minus a little slack), grinding the
+// corner would chew into the neighbouring feature — it can't be cut cleanly.
+// Convex ("sharp point") corners are always cuttable and never flagged.
+function tightCorners(ring, bitR) {
   const bad = [];
   const N = ring.length;
-  if (N < 3) return bad;
+  if (N < 3 || !(bitR > 0)) return bad;
+  const sgn = Math.sign(ringSignedArea(ring)) || 1;
+  const SLACK = 0.85;
   for (let i = 0; i < N; i++) {
     const a = ring[(i - 1 + N) % N].p, b = ring[i].p, c = ring[(i + 1) % N].p;
     const v1 = [a[0] - b[0], a[1] - b[1]], v2 = [c[0] - b[0], c[1] - b[1]];
     const l1 = Math.hypot(...v1), l2 = Math.hypot(...v2);
     if (l1 < 1e-3 || l2 < 1e-3) continue;
-    const ang = Math.acos(Math.max(-1, Math.min(1, (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2)))) * 180 / Math.PI;
-    // only flag if both adjacent edges have real length (not a smoothing wiggle)
-    if (ang < degThresh && Math.min(l1, l2) > 4) bad.push(i);
+    const z = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]);
+    if (z === 0 || Math.sign(z) === sgn) continue;    // straight or convex — easy to cut
+    const phi = Math.acos(Math.max(-1, Math.min(1, (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2))));
+    const alpha = phi / 2;                            // void half-angle
+    if (alpha < 1e-3) { bad.push(i); continue; }      // razor slot — impossible
+    const need = bitR / Math.tan(alpha);
+    if (Math.min(collinearRun(ring, i, -1), collinearRun(ring, i, 1)) < need * SLACK) bad.push(i);
   }
   return bad;
-}
-
-function bezPt(a, b, u) {
-  const iu = 1 - u;
-  return [
-    iu * iu * iu * a.p[0] + 3 * iu * iu * u * a.cout[0] + 3 * iu * u * u * b.cin[0] + u * u * u * b.p[0],
-    iu * iu * iu * a.p[1] + 3 * iu * iu * u * a.cout[1] + 3 * iu * u * u * b.cin[1] + u * u * u * b.p[1],
-  ];
-}
-
-// dense sample of a ring (curves + long straight edges) for distance queries
-function sampleDense(ring, maxSeg = 4) {
-  const pts = [];
-  const N = ring.length;
-  for (let i = 0; i < N; i++) {
-    const a = ring[i], b = ring[(i + 1) % N];
-    const d = Math.hypot(b.p[0] - a.p[0], b.p[1] - a.p[1]);
-    const steps = Math.max(1, Math.ceil(d / maxSeg));
-    const curve = a.cout && b.cin;
-    for (let t = 0; t < steps; t++) {
-      const u = t / steps;
-      pts.push(curve ? bezPt(a, b, u)
-        : [a.p[0] + (b.p[0] - a.p[0]) * u, a.p[1] + (b.p[1] - a.p[1]) * u]);
-    }
-  }
-  return pts;
-}
-
-function minDistTo(pt, pts) {
-  let m = Infinity;
-  for (const q of pts) { const d = Math.hypot(pt[0] - q[0], pt[1] - q[1]); if (d < m) m = d; }
-  return m;
-}
-
-function longestRun(flags) {
-  const N = flags.length;
-  if (flags.every((f) => f) || !flags.some((f) => f)) return null;
-  let start = 0;
-  while (flags[start]) start = (start + 1) % N;    // rotate to a false so runs don't wrap
-  let best = null, cur = null;
-  for (let k = 0; k < N; k++) {
-    const i = (start + k) % N;
-    if (flags[i]) { if (cur === null) cur = [i, i]; else cur[1] = i; }
-    else if (cur) { if (!best || runLen(cur, N) > runLen(best, N)) best = cur; cur = null; }
-  }
-  if (cur && (!best || runLen(cur, N) > runLen(best, N))) best = cur;
-  return best;
-}
-const runLen = ([s, e], N) => ((e - s + N) % N) + 1;
-
-function cloneNode(nd) {
-  return { p: nd.p.slice(), cin: nd.cin ? nd.cin.slice() : null, cout: nd.cout ? nd.cout.slice() : null };
-}
-
-// Weld two adjacent rings into one, KEEPING every edge except the two facing
-// spans across the lead gap (those become straight bridges). Returns a node
-// ring, or null if the pieces don't share a clear border.
-function weldRings(ringA, ringB) {
-  const sA = sampleDense(ringA), sB = sampleDense(ringB);
-  const distA = ringA.map((nd) => minDistTo(nd.p, sB));
-  const distB = ringB.map((nd) => minDistTo(nd.p, sA));
-  const dmin = Math.min(...distA);
-  if (dmin > 18) return null;                       // not adjacent
-  const DIST = dmin + 9;
-  const nearA = distA.map((d) => d < DIST);
-  const nearB = distB.map((d) => d < DIST);
-  const runA = longestRun(nearA), runB = longestRun(nearB);
-  if (!runA || !runB) return null;
-
-  const keep = (ring, run) => {              // far arc: nodes just past the near run
-    const N = ring.length, out = [];
-    for (let k = 0; k < N; k++) {
-      const i = (run[1] + 1 + k) % N;
-      if (i === run[0]) break;
-      out.push(cloneNode(ring[i]));
-    }
-    return out;                              // ordered start..end
-  };
-  const keptA = keep(ringA, runA);
-  let keptB = keep(ringB, runB);
-  if (keptA.length < 2 || keptB.length < 2) return null;
-
-  const endA = keptA[keptA.length - 1].p, startA = keptA[0].p;
-  const startB = keptB[0].p, endB = keptB[keptB.length - 1].p;
-  // attach B so endA meets B's nearer end; reverse B if needed (swap cin/cout)
-  if (Math.hypot(endA[0] - endB[0], endA[1] - endB[1]) <
-      Math.hypot(endA[0] - startB[0], endA[1] - startB[1])) {
-    keptB = keptB.reverse().map((nd) => { const t = nd.cin; nd.cin = nd.cout; nd.cout = t; return nd; });
-  }
-  // bridges are straight: kill control points at the four junctions
-  keptA[0].cin = null;
-  keptA[keptA.length - 1].cout = null;
-  keptB[0].cin = null;
-  keptB[keptB.length - 1].cout = null;
-  return keptA.concat(keptB);
 }
 
 // flatten a ring's cubic segments into a dense polygon for rasterizing
@@ -474,11 +420,11 @@ function flattenRing(ring, step = 8) {
   return pts;
 }
 
-// ---------- raster round-trip for cut & combine --------------------------
-// Cut/combine are hard to do as robust polygon booleans in the browser, so
-// we rasterize the affected pieces, edit the bitmap (slice or weld), then
-// re-trace the outline(s). Straight edges stay crisp (DP simplify, no
-// re-smoothing); good for the blocky pieces these tools target.
+// ---------- raster round-trip for cut ------------------------------------
+// A robust polygon boolean is hard in the browser, so we rasterize the piece,
+// erase the slice line in the bitmap, then re-trace the resulting outline(s).
+// Straight edges stay crisp (DP simplify, no re-smoothing); good for the
+// blocky pieces this tool targets.
 function rasterizePieces(pcs, bridge) {
   const W = state.W, H = state.H;
   const cv = document.createElement("canvas");
@@ -628,29 +574,6 @@ function doCut() {
   toolHint(`split into ${made.length} — click another piece to keep cutting`, true);
 }
 
-function doCombine() {
-  const ids = state.pick.slice();
-  state.pick = [];
-  const pcs = ids.map(piece).filter(Boolean);
-  if (pcs.length < 2) { renderOverlay(); return; }
-  // Weld the two OUTER rings geometrically so every non-facing edge (and its
-  // curves) survives; only the shared lead-gap spans become straight bridges.
-  const merged = weldRings(pcs[0].rings[0], pcs[1].rings[0]);
-  if (!merged) {
-    toolHint("those pieces don't share a clear edge — can't weld");
-    applyClasses(); renderOverlay();
-    return;
-  }
-  pushUndo();
-  // keep any holes from either piece
-  const holes = pcs.flatMap((p) => p.rings.slice(1));
-  const idx = Math.min(...pcs.map((p) => state.pieces.indexOf(p)));
-  state.pieces = state.pieces.filter((p) => !pcs.includes(p));
-  state.pieces.splice(idx, 0, { id: state.nextId++, rings: [merged, ...holes] });
-  markDirty(); renderPieces(); renderOverlay(); updateStat();
-  toolHint("welded — shared edge removed");
-}
-
 // ---------- undo ---------------------------------------------------------
 function snapshot() { return JSON.parse(JSON.stringify(state.pieces)); }
 function pushUndo() { state.undoStack.push(snapshot()); if (state.undoStack.length > 60) state.undoStack.shift(); $("undo").disabled = false; }
@@ -705,6 +628,10 @@ function toolHint(msg, sticky) {
 document.querySelectorAll("input[type=range]").forEach((r) =>
   r.addEventListener("input", () => (r.nextElementSibling.value = r.value)));
 
+// cut-feasibility knobs re-flag corners live (no re-trace)
+["final_size", "bit_size"].forEach((id) =>
+  $(id).addEventListener("input", () => { if (state.showWarn && svg) renderOverlay(); }));
+
 const drop = $("drop");
 $("file").addEventListener("change", (e) => setFile(e.target.files[0]));
 ["dragover", "dragenter"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("hot"); }));
@@ -737,7 +664,6 @@ $("toolset").addEventListener("click", (e) => {
 const TOOL_HINTS = {
   nodes: "click a piece, then drag its corners · alt/right-click a corner deletes it",
   delete: "click a piece to remove it",
-  combine: "click two adjacent pieces to weld them",
 };
 
 $("warnToggle").onclick = () => { state.showWarn = !state.showWarn; $("warnToggle").classList.toggle("on", state.showWarn); renderOverlay(); };
