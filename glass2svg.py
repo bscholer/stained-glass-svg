@@ -12,7 +12,7 @@ Common knobs:
     --threshold N     0-255 cutoff for "is this pixel a line?" (default 95)
     --auto            auto-pick threshold (Otsu) instead of the fixed default
     --simplify F      node-reduction tolerance in px (default 0.15)
-    --sigma F         contour smoothing strength in px (default 1.5)
+    --sigma F         contour smoothing strength in px (default 3.0)
     --min-area N      drop specks smaller than N px^2 (default 100)
     --close N         bridge gaps in lines up to N px (default 1)
     --invert          use if your lines are light on a dark background
@@ -150,7 +150,7 @@ def _corner_bounded(pts, i, j, k=10, thresh=18.0):
     return start_ok and end_ok
 
 
-def _line_runs(pts, tol, min_len):
+def _line_runs(pts, tol, min_len, corner_k=10):
     """Greedy scan for maximal corner-bounded straight runs within tol."""
     n = len(pts)
     runs = []
@@ -175,7 +175,7 @@ def _line_runs(pts, tol, min_len):
                 good = lo
                 break
         if (np.hypot(*(pts[good] - pts[i])) >= min_len
-                and _corner_bounded(pts, i, good)):
+                and _corner_bounded(pts, i, good, k=corner_k)):
             runs.append((i, good))
             i = good
         else:
@@ -281,9 +281,23 @@ def _fit_contour(cnt, simplify, sigma, smooth, scale,
     if smooth:
         pts = _gaussian_smooth_closed(pts, sigma)
     if straighten > 0 and len(pts) >= 16:
+        # corner-bounded's lookback must span at least as far as smoothing
+        # rounds a corner (radius ~3*sigma), or every straight edge next to
+        # a heavily-smoothed corner reads as "just a gentle curve" and never
+        # straightens at all.
+        corner_k = max(10, round(3 * sigma)) if smooth else 10
         pts = _rotate_to_corner(pts)
         closed = np.vstack([pts, pts[:1]])   # explicit wrap for run search
-        runs = _line_runs(closed, straighten, min_run)
+        runs = _line_runs(closed, straighten, min_run, corner_k)
+        # the "sharpest turn" heuristic above is only a guess at where the
+        # corner is; when a run already reaches the wrap point but the
+        # first run starts late, the guess landed a few points short of the
+        # real corner and split it across the seam — re-rotate to the run
+        # boundary it actually found and refit once more.
+        if runs and runs[0][0] > 0 and runs[-1][1] == len(closed) - 1:
+            pts = np.roll(pts, -runs[0][0], axis=0)
+            closed = np.vstack([pts, pts[:1]])
+            runs = _line_runs(closed, straighten, min_run, corner_k)
         return _mixed_d(closed, runs, simplify, smooth, scale)
     if simplify > 0:
         # epsilon is in absolute pixels — perimeter-relative epsilons
@@ -297,14 +311,30 @@ def _fit_contour(cnt, simplify, sigma, smooth, scale,
     return _catmull_rom_d(pts) if smooth else _polyline_d(pts)
 
 
-def _prepare_mask(mask, grow, scale=2):
-    """Upscale 2x (half-pixel coordinates) and grow the ink by `grow` px."""
+def _set_line_width(mask, width_px):
+    """Redraw every line at a uniform `width_px`, regardless of how thick or
+    thin it was traced in the source image — this is the physical solder
+    line width, so the gap between pieces should be constant everywhere.
+
+    Thins the ink to a topological 1px centerline (Zhang-Suen, connectivity-
+    preserving — a naive erode/open skeleton loop fragments at thick line
+    junctions) then redraws it at the target width.
+    """
+    skel = cv2.ximgproc.thinning(  # type: ignore[attr-defined]
+        mask, thinningType=cv2.ximgproc.THINNING_ZHANGSUEN)  # type: ignore[attr-defined]
+    r = max(1, round(width_px / 2))
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1,) * 2)
+    return cv2.dilate(skel, k)
+
+
+def _prepare_mask(mask, line_width_px, scale=2):
+    """Upscale 2x (half-pixel coordinates) and normalize every line to
+    `line_width_px` wide. `line_width_px <= 0` disables normalization and
+    keeps the mask's native line width."""
+    if line_width_px > 0:
+        mask = _set_line_width(mask, line_width_px)
     mask = cv2.resize(mask, None, fx=scale, fy=scale,
                       interpolation=cv2.INTER_NEAREST)
-    if grow > 0:
-        r = max(1, round(grow * scale))
-        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1,) * 2)
-        mask = cv2.dilate(mask, k)
     return mask
 
 
@@ -328,11 +358,11 @@ def _grouped_contours(mask, min_area):
     return out
 
 
-def contours_to_paths(mask, simplify, min_area, smooth, sigma, grow=0.5,
-                      straighten=0.0, min_run=0.0):
+def contours_to_paths(mask, simplify, min_area, smooth, sigma,
+                      line_width_px=0.0, straighten=0.0, min_run=0.0):
     """Lines mode: trace the ink itself -> one path per connected line web."""
     scale = 2
-    mask = _prepare_mask(mask, grow, scale)
+    mask = _prepare_mask(mask, line_width_px, scale)
     paths = []
     for cnts in _grouped_contours(mask, min_area * scale * scale):
         subpaths = [_fit_contour(c, simplify * scale, sigma * scale,
@@ -346,8 +376,9 @@ def contours_to_paths(mask, simplify, min_area, smooth, sigma, grow=0.5,
     return paths
 
 
-def pieces_to_paths(mask, simplify, min_area, smooth, sigma, grow=0.5,
-                    straighten=0.0, min_run=0.0, min_width=3.0):
+def pieces_to_paths(mask, simplify, min_area, smooth, sigma,
+                    line_width_px=0.0, straighten=0.0, min_run=0.0,
+                    min_width=3.0):
     """Pieces mode: each enclosed glass cell becomes its own closed path.
 
     Inverts the ink mask and traces every white region that does NOT touch
@@ -356,7 +387,7 @@ def pieces_to_paths(mask, simplify, min_area, smooth, sigma, grow=0.5,
     hair-thin sliver of glass.
     """
     scale = 2
-    mask = _prepare_mask(mask, grow, scale)
+    mask = _prepare_mask(mask, line_width_px, scale)
     inv = cv2.bitwise_not(mask)
     dist = cv2.distanceTransform(inv, cv2.DIST_L2, 5)
     h2, w2 = inv.shape
@@ -409,13 +440,23 @@ def svg_string(size, paths, fill, mode="lines"):
 
 
 def convert(img, mode="pieces", threshold: "int | None" = 95,
-            simplify=0.15, sigma=1.5, min_area: float = 100, close=1,
-            invert=False, grow=0.5, straighten=2.2, min_run: float = 15,
+            simplify=0.15, sigma=3.0, min_area: float = 100, close=1,
+            invert=False, final_size_in=12.0, line_width_in=0.05,
+            straighten=1.2, min_run: float = 15,
             min_width=3.0, smooth=True, fill="black"):
-    """Grayscale numpy image -> (svg string, shape count). Library entry."""
+    """Grayscale numpy image -> (svg string, shape count). Library entry.
+
+    `line_width_in` is the physical solder-line width (inches) the finished
+    piece will have, scaled to pixels off `final_size_in` (the long edge of
+    the finished piece, inches) vs. the image's long edge in pixels. Every
+    line is redrawn at that width regardless of how thick/thin it was
+    traced, so the gap between pieces is constant everywhere.
+    """
     mask = binarize(img, threshold, invert, close)
     tracer = pieces_to_paths if mode == "pieces" else contours_to_paths
-    kwargs = dict(smooth=smooth, sigma=sigma, grow=grow,
+    px_per_in = max(img.shape) / final_size_in if final_size_in > 0 else 0
+    line_width_px = line_width_in * px_per_in
+    kwargs = dict(smooth=smooth, sigma=sigma, line_width_px=line_width_px,
                   straighten=straighten, min_run=min_run)
     if mode == "pieces":
         kwargs["min_width"] = min_width
@@ -440,18 +481,23 @@ def main():
     ap.add_argument("--simplify", type=float, default=0.15,
                     help="node-reduction tolerance in PIXELS (default 0.15). "
                          "Higher = fewer nodes but less faithful.")
-    ap.add_argument("--sigma", type=float, default=1.5,
-                    help="contour smoothing strength in px (default 1.5). "
+    ap.add_argument("--sigma", type=float, default=3.0,
+                    help="contour smoothing strength in px (default 3.0). "
                          "Kills pixel staircase; 0 disables.")
     ap.add_argument("--mode", choices=["pieces", "lines"], default="pieces",
                     help="pieces: one shape per glass cell (default). "
                          "lines: the lead lines as one filled drawing.")
-    ap.add_argument("--grow", type=float, default=0.5,
-                    help="widen lines by N px to offset tracing/AA thinning "
-                         "(default 0.5)")
-    ap.add_argument("--straighten", type=float, default=2.2,
+    ap.add_argument("--final-size", type=float, default=12.0,
+                    help="long edge of the finished piece, inches "
+                         "(default 12) — scales --line-width to pixels")
+    ap.add_argument("--line-width", type=float, default=0.05,
+                    help="solder line width, inches (default 0.05). Every "
+                         "line is redrawn at this width regardless of the "
+                         "source's stroke thickness; 0 disables and keeps "
+                         "the traced width as-is")
+    ap.add_argument("--straighten", type=float, default=1.2,
                     help="snap nearly-straight edges to true lines: max "
-                         "waviness in px to flatten (default 2.2, 0=off)")
+                         "waviness in px to flatten (default 1.2, 0=off)")
     ap.add_argument("--min-run", type=float, default=15,
                     help="min straight-run length in px worth flattening "
                          "(default 15)")
@@ -469,10 +515,11 @@ def main():
     threshold = None if args.auto else args.threshold
     size, mask = load_binary(args.input, threshold, args.invert, args.close)
     tracer = pieces_to_paths if args.mode == "pieces" else contours_to_paths
+    px_per_in = max(size) / args.final_size if args.final_size > 0 else 0
     paths = tracer(mask, args.simplify, args.min_area,
                    smooth=not args.no_smooth, sigma=args.sigma,
-                   grow=args.grow, straighten=args.straighten,
-                   min_run=args.min_run)
+                   line_width_px=args.line_width * px_per_in,
+                   straighten=args.straighten, min_run=args.min_run)
     if not paths:
         sys.exit("error: no line-work detected — try --threshold or --invert")
     write_svg(out, size, paths, args.fill, mode=args.mode)

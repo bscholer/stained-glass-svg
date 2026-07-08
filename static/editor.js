@@ -206,6 +206,7 @@ function wireCanvas() {
 function renderOverlay() {
   if (!gOverlay) return;
   gOverlay.textContent = "";
+  snapMark = null;          // just got detached from the DOM above
   const r = px2user();
   if (state.showWarn) drawWarnings(r);
   if (state.tool === "nodes" && state.sel != null) drawHandles(r);
@@ -264,23 +265,28 @@ function drawCutPoints(r) {
 }
 
 // ---------- node dragging ------------------------------------------------
-function startNodeDrag(e, ri, ni) {
+function startNodeDrag(e, ri, ni, handleEl) {
   e.stopPropagation();
   pushUndo();
   const pc = piece(state.sel);
   const ring = pc.rings[ri];
   const nd = ring[ni];
   const el = pieceEl(pc.id);
-  const handle = e.target;
+  const handle = handleEl || e.target;
   const N = ring.length;
   const prev = ring[(ni - 1 + N) % N], next = ring[(ni + 1) % N];
   const targets = snapTargets(nd, prev, next);
+  const minLen = Math.max(0.15 * lineWidthPx(), 1e-6);
   svg.setPointerCapture(e.pointerId);
   const move = (ev) => {
-    let [ux, uy] = evtUser(ev);
+    const raw = evtUser(ev);
+    let [ux, uy] = raw;
     let hit = null;
     if (state.snap && !ev.shiftKey) {
-      const thr = 9 * px2user();
+      // never snap looser than a comfortable on-screen hit radius, but
+      // never tighter than one physical solder-line width either — points
+      // closer than that will be bridged by solder anyway
+      const thr = Math.max(9 * px2user(), lineWidthPx());
       let bd = thr;
       for (const t of targets) {           // 1. snap onto a nearby vertex
         const d = Math.hypot(ux - t[0], uy - t[1]);
@@ -303,6 +309,12 @@ function startNodeDrag(e, ri, ni) {
         }
       }
     }
+    // never let a move create a self-crossing or hairline-thin edge — try
+    // the snapped point, fall back to the raw cursor, else hold in place
+    if (!moveIsValid(ring, ni, [ux, uy], minLen)) {
+      if (moveIsValid(ring, ni, raw, minLen)) { ux = raw[0]; uy = raw[1]; hit = null; }
+      else { showSnap(null, px2user()); return; }
+    }
     const dx = ux - nd.p[0], dy = uy - nd.p[1];
     for (const q of [nd.p, nd.cin, nd.cout]) if (q) { q[0] += dx; q[1] += dy; }
     el.setAttribute("d", pieceD(pc));
@@ -320,16 +332,53 @@ function startNodeDrag(e, ri, ni) {
   svg.addEventListener("pointerup", up);
 }
 
-// every other vertex in the drawing (minus the dragged node and its two
-// neighbours), so a corner can land exactly on the shared lead line of the
-// piece next to it and the two edges stay coincident
+// true if moving ring[ni] to `cand` keeps both adjacent edges above
+// `minLen` and doesn't fold the ring into a self-intersecting shape
+function moveIsValid(ring, ni, cand, minLen) {
+  const N = ring.length;
+  const prev = ring[(ni - 1 + N) % N].p, next = ring[(ni + 1) % N].p;
+  if (Math.hypot(cand[0] - prev[0], cand[1] - prev[1]) < minLen) return false;
+  if (Math.hypot(cand[0] - next[0], cand[1] - next[1]) < minLen) return false;
+  const test = ring.map((q, i) => (i === ni ? cand : q.p));
+  return !ringSelfIntersects(test);
+}
+
+function segsIntersect(p1, p2, p3, p4) {
+  const d = (p2[0] - p1[0]) * (p4[1] - p3[1]) - (p2[1] - p1[1]) * (p4[0] - p3[0]);
+  if (Math.abs(d) < 1e-12) return false;
+  const t = ((p3[0] - p1[0]) * (p4[1] - p3[1]) - (p3[1] - p1[1]) * (p4[0] - p3[0])) / d;
+  const u = ((p3[0] - p1[0]) * (p2[1] - p1[1]) - (p3[1] - p1[1]) * (p2[0] - p1[0])) / d;
+  return t > 1e-9 && t < 1 - 1e-9 && u > 1e-9 && u < 1 - 1e-9;
+}
+
+// simple-polygon check over straight edges between vertices — a good proxy
+// even though rendered edges are curved, since real self-crossings always
+// show up at the vertex level first
+function ringSelfIntersects(pts) {
+  const N = pts.length;
+  for (let i = 0; i < N; i++) {
+    const a1 = pts[i], a2 = pts[(i + 1) % N];
+    for (let j = i + 1; j < N; j++) {
+      if (j === i || (j + 1) % N === i || (i + 1) % N === j) continue;
+      if (segsIntersect(a1, a2, pts[j], pts[(j + 1) % N])) return true;
+    }
+  }
+  return false;
+}
+
+// vertices near enough to the dragged corner's current spot to plausibly be
+// its partner across the shared solder seam (minus the node itself and its
+// two neighbours) — capped so dragging never snaps across open canvas onto
+// some unrelated piece's edge that isn't actually adjacent here
 function snapTargets(nd, prev, next) {
   const skip = new Set([nd, prev, next]);
+  const R = 4 * lineWidthPx();
+  const [ox, oy] = nd.p;
   const out = [];
   for (const pc of state.pieces)
     for (const rg of pc.rings)
       for (const q of rg)
-        if (!skip.has(q)) out.push(q.p);
+        if (!skip.has(q) && Math.hypot(q.p[0] - ox, q.p[1] - oy) <= R) out.push(q.p);
   return out;
 }
 
@@ -375,11 +424,34 @@ function onPieceDown(id, e) {
   if (state.tool === "delete") {
     pushUndo(); removePiece(id); markDirty(); renderPieces(); renderOverlay(); updateStat();
   } else if (state.tool === "nodes") {
+    const wasSelected = state.sel === id;
     state.sel = id; applyClasses(); renderOverlay();
+    if (!wasSelected) {
+      // the piece wasn't selected yet, so its drag handles didn't exist at
+      // pointerdown — the click landed on the path itself. If it landed on
+      // (or near) a corner, start dragging it immediately instead of
+      // swallowing the gesture as a mere "select" and dropping the drag.
+      const [ux, uy] = evtUser(e);
+      const hit = nearestNode(piece(id), ux, uy, 8 * px2user());
+      if (hit) {
+        const handleEl = gOverlay.querySelector(`circle.handle[data-ri="${hit.ri}"][data-ni="${hit.ni}"]`);
+        startNodeDrag(e, hit.ri, hit.ni, handleEl);
+      }
+    }
   } else if (state.tool === "cut") {
     if (state.sel == null) { state.sel = id; applyClasses(); }
     addCutPoint(evtUser(e));
   }
+}
+
+function nearestNode(pc, ux, uy, thr) {
+  if (!pc) return null;
+  let best = null, bd = thr;
+  pc.rings.forEach((ring, ri) => ring.forEach((nd, ni) => {
+    const d = Math.hypot(nd.p[0] - ux, nd.p[1] - uy);
+    if (d < bd) { bd = d; best = { ri, ni }; }
+  }));
+  return best;
 }
 
 function onEmptyClick(pos) {
@@ -411,6 +483,13 @@ function bitRadiusPx() {
   const finalIn = Math.max(0.5, parseFloat($("final_size").value) || 12);
   const bitIn = Math.max(0.02, parseFloat($("bit_size").value) || 0.25);
   return (bitIn / 2) * (Math.max(state.W, state.H) / finalIn);
+}
+
+// solder line width in pixels, from the finished-size + line-width controls
+function lineWidthPx() {
+  const finalIn = Math.max(0.5, parseFloat($("final_size").value) || 12);
+  const lwIn = Math.max(0.01, parseFloat($("line_width").value) || 0.1);
+  return lwIn * (Math.max(state.W, state.H) / finalIn);
 }
 
 function ringSignedArea(ring) {
@@ -754,7 +833,7 @@ $("go").onclick = async () => {
     const fd = new FormData();
     fd.append("image", state.file);
     fd.append("mode", state.mode);
-    for (const id of ["threshold", "straighten", "sigma", "simplify", "min_area", "min_width", "grow"])
+    for (const id of ["threshold", "straighten", "sigma", "simplify", "min_area", "min_width", "final_size", "line_width"])
       fd.append(id, $(id).value);
     fd.append("auto_threshold", $("auto_threshold").checked);
     fd.append("invert", $("invert").checked);
