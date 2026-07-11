@@ -767,7 +767,16 @@ function setFile(f) {
   if (!f) return;
   state.file = f;
   $("fname").textContent = `${f.name} · ${(f.size / 1024).toFixed(0)} kB`;
-  $("go").disabled = false;
+  $("err").hidden = true;
+  if (isSvgFile(f)) {
+    $("go").disabled = true;   // an SVG can't be re-traced — it's loaded straight into the editor
+    loadSvgFile(f);
+  } else {
+    $("go").disabled = false;
+  }
+}
+function isSvgFile(f) {
+  return f.type === "image/svg+xml" || /\.svg$/i.test(f.name);
 }
 
 $("modePieces").onclick = () => setMode("pieces");
@@ -829,16 +838,58 @@ $("go").onclick = async () => {
 
 function loadTrace(out) {
   const doc = new DOMParser().parseFromString(out.svg, "image/svg+xml");
-  state.W = out.width; state.H = out.height;
+  const pieces = [...doc.querySelectorAll("path")].map((p) => ({ rings: parsePath(p.getAttribute("d")) }));
+  installPieces(pieces, out.width, out.height, state.mode,
+    state.file.name.replace(/\.[^.]+$/, "") || "template");
+}
+
+// reopen a previously downloaded (or hand-edited) template SVG and drop
+// straight into the editor, skipping the trace step entirely
+function loadSvgFile(f) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const doc = new DOMParser().parseFromString(String(reader.result), "image/svg+xml");
+      if (doc.querySelector("parsererror")) throw new Error("couldn't parse that file as SVG");
+      const root = doc.documentElement;
+      const vb = parseViewBox(root);
+      const W = parseFloat(root.getAttribute("width")) || vb[2];
+      const H = parseFloat(root.getAttribute("height")) || vb[3];
+      if (!(W > 0) || !(H > 0)) throw new Error("SVG has no usable width/height");
+      const paths = [...doc.querySelectorAll("path")];
+      if (!paths.length) throw new Error("no <path> elements found in that SVG");
+      const g = paths[0].closest("g");
+      const fill = ((g && g.getAttribute("fill")) || paths[0].getAttribute("fill") || "").trim().toLowerCase();
+      const mode = fill === "black" ? "lines" : "pieces";
+      const pieces = paths
+        .map((p) => ({ rings: parsePath(p.getAttribute("d")) }))
+        .filter((pc) => pc.rings.length);
+      if (!pieces.length) throw new Error("couldn't find any closed shapes in that SVG");
+      setMode(mode);
+      installPieces(pieces, W, H, mode, f.name.replace(/\.[^.]+$/, "") || "template");
+    } catch (e) {
+      $("err").textContent = e.message; $("err").hidden = false;
+    }
+  };
+  reader.readAsText(f);
+}
+
+function parseViewBox(root) {
+  const vb = (root.getAttribute("viewBox") || "").trim().split(/[\s,]+/).map(Number);
+  return vb.length === 4 && vb.every(Number.isFinite) ? vb : [0, 0, 0, 0];
+}
+
+function installPieces(pieces, W, H, mode, name) {
+  state.W = W; state.H = H;
+  state.mode = mode;
   state.pieces = [];
   state.nextId = 1;
-  for (const p of doc.querySelectorAll("path"))
-    state.pieces.push({ id: state.nextId++, rings: parsePath(p.getAttribute("d")) });
+  for (const pc of pieces) state.pieces.push({ id: state.nextId++, rings: pc.rings });
   state.undoStack = []; dirty = false; state.sel = null; state.pick = [];
-  baseName = (state.file.name.replace(/\.[^.]+$/, "") || "template");
+  baseName = name;
   $("stagehint").hidden = true;
   $("toolset").hidden = state.mode !== "pieces";
-  state.tool = state.mode === "pieces" ? "nodes" : "nodes";
+  state.tool = "nodes";
   for (const x of $("toolset").children) x.classList.toggle("on", x.dataset.tool === "nodes");
   $("warnToggle").hidden = false; $("snapToggle").hidden = false; $("undo").hidden = false; $("fit").hidden = false;
   $("undo").disabled = true;
