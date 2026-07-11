@@ -6,10 +6,29 @@
 <title>glass2svg — stained glass cut templates</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+  /* self-hosted — no request ever leaves this origin for fonts */
+  @font-face {
+    font-family: "Fraunces";
+    font-style: normal;
+    font-weight: 400 900;
+    font-display: swap;
+    src: url("/static/fonts/fraunces.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "IBM Plex Mono";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("/static/fonts/ibm-plex-mono-400.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "IBM Plex Mono";
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url("/static/fonts/ibm-plex-mono-500.woff2") format("woff2");
+  }
   :root {
     --paper: #f4efe6;
     --paper-deep: #ece5d6;
@@ -150,7 +169,7 @@
   svg .cutline { stroke: var(--amber); stroke-width: 2; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; pointer-events: none; }
   svg .snap { fill: none; stroke: var(--teal); stroke-width: 2.5; vector-effect: non-scaling-stroke; pointer-events: none; }
 
-  footer { border-top: 2px solid var(--lead); padding: 6px clamp(16px, 4vw, 48px); font-size: 11px; opacity: .6; display: flex; justify-content: space-between; flex: 0 0 auto; }
+  footer { border-top: 2px solid var(--lead); padding: 6px clamp(16px, 4vw, 48px); font-size: 11px; opacity: .6; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; flex: 0 0 auto; }
   footer a { color: inherit; }
 </style>
 </head>
@@ -236,6 +255,7 @@
 
 <footer>
   <span>wheel = zoom · drag empty space = pan</span>
+  <span>no trackers, no accounts, nothing stored — your image never leaves this request</span>
   <a href="https://github.com/bscholer/stained-glass-svg">github.com/bscholer/stained-glass-svg</a>
 </footer>
 
